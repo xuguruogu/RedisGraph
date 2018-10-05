@@ -2,7 +2,7 @@
 // GrB_Matrix_extractTuples: extract all tuples from a matrix
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -30,7 +30,7 @@ GrB_Info GrB_Matrix_extractTuples_ ## T     /* [I,J,X] = find (A) */          \
 )                                                                             \
 {                                                                             \
     WHERE ("GrB_Matrix_extractTuples_" GB_STR(T) " (I, J, X, nvals, A)") ;    \
-    RETURN_IF_NULL_OR_UNINITIALIZED (A) ;                                     \
+    RETURN_IF_NULL_OR_FAULTY (A) ;                                            \
     RETURN_IF_NULL (p_nvals) ;                                                \
     return (GB_extractTuples (I, J, X, p_nvals, GB_ ## T ## _code, A)) ;      \
 }

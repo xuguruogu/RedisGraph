@@ -2,7 +2,7 @@
 // GB_qsort_1: sort an n-by-1 list of integers
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ void GB_qsort_1         // sort array A of size 1-by-n
     int64_t A_0 [ ],    // size-n array
     const int64_t n
 )
-{
+{ 
     quicksort (arg (A), n) ;
 }
 

@@ -1,7 +1,7 @@
 function test43
 %TEST43 test subref
 
-% SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+% SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 % http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 fprintf ('\n------------------------------ testing GB_mex_Matrix_subref\n') ;
@@ -14,10 +14,6 @@ J = uint64 (0:3) ;
 
 C0 = A (I+1,J+1) ;
 C = GB_mex_Matrix_subref (A, I, J) ;
-assert (isequal (C, C0))
-
-C0 = A (I+1,J+1)' ;
-C = GB_mex_Matrix_subref (A, J, I, true) ;
 assert (isequal (C, C0))
 
 C0 = A (:,:) ;
@@ -79,13 +75,8 @@ catch
 end
 assert (ok) ;
 
-tic
-A4 = GB_mex_Matrix_subref (A, p0, p0, true)' ;
-t3 = toc ;
-
 assert (isequal (A1, A2)) ;
-assert (isequal (A1, A4)) ;
-fprintf ('MATLAB %g GrB %g CSparse %g GrBT %g\n', t0, t1, t2, t3) ;
+fprintf ('MATLAB %g GrB %g CSparse %g\n', t0, t1, t2) ;
 
 n = size (A,1) ;
 
@@ -100,11 +91,7 @@ J1 = J + 1 ;
     tic
     C1 = GB_mex_Matrix_subref (A, I, J) ;
     toc
-    tic
-    C2 = GB_mex_Matrix_subref (A, J, I, true)' ;
-    toc
     assert (isequal (C0, C1)) ;
-    assert (isequal (C0, C2)) ;
 
 fprintf ('-------------------------- contig:\n') ;
 I = sort (I) ;
@@ -130,11 +117,6 @@ J1 = J + 1 ;
     toc
     tic
     C1 = GB_mex_Matrix_subref (A, I, J) ;
-    toc
-    assert (isequal (C0, C1)) ;
-
-    tic
-    C1 = GB_mex_Matrix_subref (A, J, I, true)' ;
     toc
     assert (isequal (C0, C1)) ;
 
@@ -204,15 +186,6 @@ fprintf ('length (I), %d min %d max %d\n', length (I), min (I), max (I)) ;
     toc
     tic
     C1 = GB_mex_Matrix_subref (A, I, J) ;
-    toc
-    assert (isequal (C0, C1)) ;
-
-fprintf ('-------------------------- contig lower half, transpose:\n') ;
-    tic
-    C0 = A (I1,J1)' ;
-    toc
-    tic
-    C1 = GB_mex_Matrix_subref (A, J, I, true) ;
     toc
     assert (isequal (C0, C1)) ;
 

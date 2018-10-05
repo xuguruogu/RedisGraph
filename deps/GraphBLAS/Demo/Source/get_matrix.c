@@ -2,7 +2,7 @@
 // GraphBLAS/Demo/get_matrix.c: get a matrix from a file, or create random one
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -154,7 +154,7 @@ GrB_Info get_matrix         // get a matrix from stdin, or create random one
         // default is 0-based, for the matrices in the Matrix/ folder
 
         bool one_based = false ;
-        if (argc > 2) one_based = strtol (argv [1], NULL, 0) ;
+        if (argc > 1) one_based = strtol (argv [1], NULL, 0) ;
 
         OK (read_matrix (&A, stdin, true, no_self_edges, one_based, boolean,
             true)) ;

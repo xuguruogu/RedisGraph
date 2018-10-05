@@ -2,7 +2,7 @@
 // GB_builtin.c: built-in types, functions, operators, and other externs
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -17,7 +17,7 @@
 //------------------------------------------------------------------------------
 
 // extern predefined type objects but opaque to the user
-GB_Type_opaque
+struct GB_Type_opaque
 GB_opaque_BOOL   = { MAGIC, sizeof (bool),     GB_BOOL_code   , "bool"     },
 GB_opaque_INT8   = { MAGIC, sizeof (int8_t),   GB_INT8_code   , "int8_t"   },
 GB_opaque_UINT8  = { MAGIC, sizeof (uint8_t),  GB_UINT8_code  , "uint8_t"  },
@@ -50,7 +50,7 @@ GrB_Type
 
 // helper macro to define unary operators; z and x have the same type
 #define UNARY(PREFIX,OPERATOR,OPNAME)                                       \
-GB_UnaryOp_opaque GB (OPERATOR ## _opaque) =                                \
+struct GB_UnaryOp_opaque GB (OPERATOR ## _opaque) =                         \
 {                                                                           \
     MAGIC,                                                                  \
     & GB (opaque),                                                          \
@@ -64,7 +64,7 @@ GrB_UnaryOp GRB_NAME (PREFIX,OPERATOR) = & GB (OPERATOR ## _opaque) ;
 
 // helper macro to define binary operators: all x,y,z types the same
 #define BINARY(PREFIX,OPERATOR,OPNAME)                                      \
-GB_BinaryOp_opaque GB (OPERATOR ## _opaque) =                               \
+struct GB_BinaryOp_opaque GB (OPERATOR ## _opaque) =                        \
 {                                                                           \
     MAGIC,                                                                  \
     & GB (opaque),                                                          \
@@ -78,7 +78,7 @@ GrB_BinaryOp GRB_NAME (PREFIX,OPERATOR) = & GB (OPERATOR ## _opaque) ;
 
 // helper macro to define binary operators that return BOOL
 #define BINARY_BOOL(PREFIX,OPERATOR,OPNAME)                                 \
-GB_BinaryOp_opaque GB (OPERATOR ## _opaque) =                               \
+struct GB_BinaryOp_opaque GB (OPERATOR ## _opaque) =                        \
 {                                                                           \
     MAGIC,                                                                  \
     & GB (opaque),                                                          \
@@ -168,7 +168,7 @@ GrB_BinaryOp GRB_NAME (PREFIX,OPERATOR) = & GB (OPERATOR ## _opaque) ;
 //------------------------------------------------------------------------------
 
 void GB_copy_user_user (void *z, const void *x, size_t s)
-{
+{ 
     memcpy (z, x, s) ;
 }
 
@@ -184,27 +184,27 @@ GrB_BinaryOp GrB_LXOR = & GB_LXOR_opaque_BOOL ;
 // built-in select operators
 //------------------------------------------------------------------------------
 
-GB_SelectOp_opaque GB_TRIL_opaque =
+struct GB_SelectOp_opaque GB_TRIL_opaque =
 {
     MAGIC, NULL, NULL, "tril", GB_TRIL_opcode
 } ;
 
-GB_SelectOp_opaque GB_TRIU_opaque =
+struct GB_SelectOp_opaque GB_TRIU_opaque =
 {
     MAGIC, NULL, NULL, "triu", GB_TRIU_opcode
 } ;
 
-GB_SelectOp_opaque GB_DIAG_opaque =
+struct GB_SelectOp_opaque GB_DIAG_opaque =
 {
     MAGIC, NULL, NULL, "diag", GB_DIAG_opcode
 } ;
 
-GB_SelectOp_opaque GB_OFFDIAG_opaque =
+struct GB_SelectOp_opaque GB_OFFDIAG_opaque =
 {
     MAGIC, NULL, NULL, "offdiag", GB_OFFDIAG_opcode
 } ;
 
-GB_SelectOp_opaque GB_NONZERO_opaque =
+struct GB_SelectOp_opaque GB_NONZERO_opaque =
 {
     MAGIC, NULL, NULL, "nonzero", GB_NONZERO_opcode
 } ;
@@ -216,85 +216,93 @@ GxB_SelectOp GxB_OFFDIAG = & GB_OFFDIAG_opaque ;
 GxB_SelectOp GxB_NONZERO = & GB_NONZERO_opaque ;
 
 //------------------------------------------------------------------------------
-// GrB_ALL for methods that take lists of indices
+// GrB_ALL
 //------------------------------------------------------------------------------
 
-// The pointer is never deferenced.  It is passed in as an argument to indicate
-// that all indices are to be used, as in the colon in C = A(:,j).
+// The GrB_ALL pointer is never deferenced.  It is passed in as an argument to
+// indicate that all indices are to be used, as in the colon in C = A(:,j).
 
 GrB_Index GB_ALL_opaque = 0 ;
 const GrB_Index *GrB_ALL = & GB_ALL_opaque ;
+
+// the default hypersparsity ratio is (1/16)
+const double GxB_HYPER_DEFAULT = GB_HYPER_DEFAULT ;
+
+// set GxB_HYPER to either of these to ensure matrix is always, or never,
+// stored in hypersparse format, respectively.
+const double GxB_ALWAYS_HYPER = GB_ALWAYS_HYPER ;
+const double GxB_NEVER_HYPER  = GB_NEVER_HYPER ;
+const GxB_Format_Value GxB_FORMAT_DEFAULT = GB_FORMAT_DEFAULT ;
 
 //------------------------------------------------------------------------------
 // predefined built-in monoids
 //------------------------------------------------------------------------------
 
 // helper macro to define built-in monoids
-#define MONOID(OP,T,CTYPE,IDENTITY,IDZERO)                                  \
+#define MONOID(OP,T,CTYPE,IDENTITY)                                         \
 CTYPE GB_identity_ ## OP ## opaque_ ## T = IDENTITY ;                       \
-GB_Monoid_opaque GB_ ## OP ## T ## _MONOID_opaque =                         \
+struct GB_Monoid_opaque GB_ ## OP ## T ## _MONOID_opaque =                  \
 {                                                                           \
     MAGIC,                                                                  \
     & GB_ ## OP ## opaque_ ## T,                                            \
     & GB_identity_ ## OP ## opaque_ ## T,                                   \
-    IDZERO,                                                                 \
     false,                                                                  \
 } ;                                                                         \
 GrB_Monoid GxB_ ## OP ## T ## _MONOID  = & GB_ ## OP ## T ## _MONOID_opaque ;
 
 // MIN monoids:
-MONOID ( MIN_   , INT8   , int8_t   , INT8_MAX   , false ) ;
-MONOID ( MIN_   , UINT8  , uint8_t  , UINT8_MAX  , false ) ;
-MONOID ( MIN_   , INT16  , int16_t  , INT16_MAX  , false ) ;
-MONOID ( MIN_   , UINT16 , uint16_t , UINT16_MAX , false ) ;
-MONOID ( MIN_   , INT32  , int32_t  , INT32_MAX  , false ) ;
-MONOID ( MIN_   , UINT32 , uint32_t , UINT32_MAX , false ) ;
-MONOID ( MIN_   , INT64  , int64_t  , INT64_MAX  , false ) ;
-MONOID ( MIN_   , UINT64 , uint64_t , UINT64_MAX , false ) ;
-MONOID ( MIN_   , FP32   , float    , INFINITY   , false ) ;
-MONOID ( MIN_   , FP64   , double   , INFINITY   , false ) ;
+MONOID ( MIN_   , INT8   , int8_t   , INT8_MAX   ) ;
+MONOID ( MIN_   , UINT8  , uint8_t  , UINT8_MAX  ) ;
+MONOID ( MIN_   , INT16  , int16_t  , INT16_MAX  ) ;
+MONOID ( MIN_   , UINT16 , uint16_t , UINT16_MAX ) ;
+MONOID ( MIN_   , INT32  , int32_t  , INT32_MAX  ) ;
+MONOID ( MIN_   , UINT32 , uint32_t , UINT32_MAX ) ;
+MONOID ( MIN_   , INT64  , int64_t  , INT64_MAX  ) ;
+MONOID ( MIN_   , UINT64 , uint64_t , UINT64_MAX ) ;
+MONOID ( MIN_   , FP32   , float    , INFINITY   ) ;
+MONOID ( MIN_   , FP64   , double   , INFINITY   ) ;
 
 // MAX monoids:
-MONOID ( MAX_   , INT8   , int8_t   , INT8_MIN   , false ) ;
-MONOID ( MAX_   , UINT8  , uint8_t  , 0          , true  ) ;
-MONOID ( MAX_   , INT16  , int16_t  , INT16_MIN  , false ) ;
-MONOID ( MAX_   , UINT16 , uint16_t , 0          , true  ) ;
-MONOID ( MAX_   , INT32  , int32_t  , INT32_MIN  , false ) ;
-MONOID ( MAX_   , UINT32 , uint32_t , 0          , true  ) ;
-MONOID ( MAX_   , INT64  , int64_t  , INT64_MIN  , false ) ;
-MONOID ( MAX_   , UINT64 , uint64_t , 0          , true  ) ;
-MONOID ( MAX_   , FP32   , float    , -INFINITY  , false ) ;
-MONOID ( MAX_   , FP64   , double   , -INFINITY  , false ) ;
+MONOID ( MAX_   , INT8   , int8_t   , INT8_MIN   ) ;
+MONOID ( MAX_   , UINT8  , uint8_t  , 0          ) ;
+MONOID ( MAX_   , INT16  , int16_t  , INT16_MIN  ) ;
+MONOID ( MAX_   , UINT16 , uint16_t , 0          ) ;
+MONOID ( MAX_   , INT32  , int32_t  , INT32_MIN  ) ;
+MONOID ( MAX_   , UINT32 , uint32_t , 0          ) ;
+MONOID ( MAX_   , INT64  , int64_t  , INT64_MIN  ) ;
+MONOID ( MAX_   , UINT64 , uint64_t , 0          ) ;
+MONOID ( MAX_   , FP32   , float    , -INFINITY  ) ;
+MONOID ( MAX_   , FP64   , double   , -INFINITY  ) ;
 
 // PLUS monoids:
-MONOID ( PLUS_  , INT8   , int8_t   , 0          , true  ) ;
-MONOID ( PLUS_  , UINT8  , uint8_t  , 0          , true  ) ;
-MONOID ( PLUS_  , INT16  , int16_t  , 0          , true  ) ;
-MONOID ( PLUS_  , UINT16 , uint16_t , 0          , true  ) ;
-MONOID ( PLUS_  , INT32  , int32_t  , 0          , true  ) ;
-MONOID ( PLUS_  , UINT32 , uint32_t , 0          , true  ) ;
-MONOID ( PLUS_  , INT64  , int64_t  , 0          , true  ) ;
-MONOID ( PLUS_  , UINT64 , uint64_t , 0          , true  ) ;
-MONOID ( PLUS_  , FP32   , float    , 0          , true  ) ;
-MONOID ( PLUS_  , FP64   , double   , 0          , true  ) ;
+MONOID ( PLUS_  , INT8   , int8_t   , 0          ) ;
+MONOID ( PLUS_  , UINT8  , uint8_t  , 0          ) ;
+MONOID ( PLUS_  , INT16  , int16_t  , 0          ) ;
+MONOID ( PLUS_  , UINT16 , uint16_t , 0          ) ;
+MONOID ( PLUS_  , INT32  , int32_t  , 0          ) ;
+MONOID ( PLUS_  , UINT32 , uint32_t , 0          ) ;
+MONOID ( PLUS_  , INT64  , int64_t  , 0          ) ;
+MONOID ( PLUS_  , UINT64 , uint64_t , 0          ) ;
+MONOID ( PLUS_  , FP32   , float    , 0          ) ;
+MONOID ( PLUS_  , FP64   , double   , 0          ) ;
 
 // TIMES monoids:
-MONOID ( TIMES_ , INT8   , int8_t   , 1          , false ) ;
-MONOID ( TIMES_ , UINT8  , uint8_t  , 1          , false ) ;
-MONOID ( TIMES_ , INT16  , int16_t  , 1          , false ) ;
-MONOID ( TIMES_ , UINT16 , uint16_t , 1          , false ) ;
-MONOID ( TIMES_ , INT32  , int32_t  , 1          , false ) ;
-MONOID ( TIMES_ , UINT32 , uint32_t , 1          , false ) ;
-MONOID ( TIMES_ , INT64  , int64_t  , 1          , false ) ;
-MONOID ( TIMES_ , UINT64 , uint64_t , 1          , false ) ;
-MONOID ( TIMES_ , FP32   , float    , 1          , false ) ;
-MONOID ( TIMES_ , FP64   , double   , 1          , false ) ;
+MONOID ( TIMES_ , INT8   , int8_t   , 1          ) ;
+MONOID ( TIMES_ , UINT8  , uint8_t  , 1          ) ;
+MONOID ( TIMES_ , INT16  , int16_t  , 1          ) ;
+MONOID ( TIMES_ , UINT16 , uint16_t , 1          ) ;
+MONOID ( TIMES_ , INT32  , int32_t  , 1          ) ;
+MONOID ( TIMES_ , UINT32 , uint32_t , 1          ) ;
+MONOID ( TIMES_ , INT64  , int64_t  , 1          ) ;
+MONOID ( TIMES_ , UINT64 , uint64_t , 1          ) ;
+MONOID ( TIMES_ , FP32   , float    , 1          ) ;
+MONOID ( TIMES_ , FP64   , double   , 1          ) ;
 
 // Boolean monoids:
-MONOID ( LOR_   , BOOL   , bool     , false      , false ) ;
-MONOID ( LAND_  , BOOL   , bool     , true       , true  ) ;
-MONOID ( LXOR_  , BOOL   , bool     , false      , false ) ;
-MONOID ( EQ_    , BOOL   , bool     , true       , true  ) ;
+MONOID ( LOR_   , BOOL   , bool     , false      ) ;
+MONOID ( LAND_  , BOOL   , bool     , true       ) ;
+MONOID ( LXOR_  , BOOL   , bool     , false      ) ;
+MONOID ( EQ_    , BOOL   , bool     , true       ) ;
 
 //------------------------------------------------------------------------------
 // predefined built-in semirings
@@ -302,7 +310,7 @@ MONOID ( EQ_    , BOOL   , bool     , true       , true  ) ;
 
 // helper macro to define semirings: all x,y,z types the same
 #define SEMIRING(ADD,MULT)                                                  \
-GB_Semiring_opaque GB (ADD ## _ ## MULT ## _opaque) =                       \
+struct GB_Semiring_opaque GB (ADD ## _ ## MULT ## _opaque) =                \
 {                                                                           \
     MAGIC,                                                                  \
     & GM (ADD),                                                             \
@@ -313,7 +321,7 @@ GrB_Semiring GRB (ADD ## _ ## MULT) = & GB (ADD ## _ ## MULT ## _opaque) ;
 
 // helper macro to define semirings: x,y types the same, z boolean
 #define SEMIRING_COMPARE(ADD,MULT)                                          \
-GB_Semiring_opaque GB (ADD ## _ ## MULT ## _opaque) =                       \
+struct GB_Semiring_opaque GB (ADD ## _ ## MULT ## _opaque) =                \
 {                                                                           \
     MAGIC,                                                                  \
     & GMBOOL (ADD),                                                         \

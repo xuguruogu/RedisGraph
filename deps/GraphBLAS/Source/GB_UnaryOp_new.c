@@ -2,7 +2,7 @@
 // GB_UnaryOp_new: create a new unary operator
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -23,7 +23,7 @@ GrB_Info GB_UnaryOp_new             // create a new user-defined unary operator
     const GrB_Type xtype,           // type of input x
     const char *name                // name of the function
 )
-{
+{ 
 
     //--------------------------------------------------------------------------
     // check inputs
@@ -33,19 +33,18 @@ GrB_Info GB_UnaryOp_new             // create a new user-defined unary operator
     RETURN_IF_NULL (unaryop) ;
     (*unaryop) = NULL ;
     RETURN_IF_NULL (function) ;
-    RETURN_IF_NULL_OR_UNINITIALIZED (ztype) ;
-    RETURN_IF_NULL_OR_UNINITIALIZED (xtype) ;
-    ASSERT (name != NULL) ;
+    RETURN_IF_NULL_OR_FAULTY (ztype) ;
+    RETURN_IF_NULL_OR_FAULTY (xtype) ;
 
     //--------------------------------------------------------------------------
     // create the unary op
     //--------------------------------------------------------------------------
 
     // allocate the unary operator
-    GB_CALLOC_MEMORY (*unaryop, 1, sizeof (GB_UnaryOp_opaque)) ;
+    GB_CALLOC_MEMORY (*unaryop, 1, sizeof (struct GB_UnaryOp_opaque)) ;
     if (*unaryop == NULL)
-    {
-        return (ERROR (GrB_OUT_OF_MEMORY, (LOG, "out of memory"))) ;
+    { 
+        return (NO_MEMORY) ;
     }
 
     // initialize the unary operator
@@ -56,7 +55,7 @@ GrB_Info GB_UnaryOp_new             // create a new user-defined unary operator
     op->function = function ;
     strncpy (op->name, name, GB_LEN-1) ;
     op->opcode = GB_USER_opcode ;           // generic opcode for all user ops
-    ASSERT_OK (GB_check (op, "new user-defined unary op", 0)) ;
+    ASSERT_OK (GB_check (op, "new user-defined unary op", D0)) ;
     return (REPORT_SUCCESS) ;
 }
 

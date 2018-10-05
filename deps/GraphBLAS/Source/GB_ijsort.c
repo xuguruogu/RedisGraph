@@ -2,7 +2,7 @@
 // GB_ijsort:  sort an index array I and remove duplicates
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 #include "GB.h"
@@ -24,10 +24,8 @@ GrB_Info GB_ijsort
 
     GB_MALLOC_MEMORY (I2, ni, sizeof (GrB_Index)) ;
     if (I2 == NULL)
-    {
-        double memory = GBYTES (ni, sizeof (GrB_Index)) ;
-        return (ERROR (GrB_OUT_OF_MEMORY, (LOG,
-            "out of memory, %g GBytes required", memory))) ;
+    { 
+        return (OUT_OF_MEMORY (GBYTES (ni, sizeof (GrB_Index)))) ;
     }
 
     //--------------------------------------------------------------------------
@@ -35,21 +33,21 @@ GrB_Info GB_ijsort
     //--------------------------------------------------------------------------
 
     for (int64_t k = 0 ; k < ni ; k++)
-    {
+    { 
         I2 [k] = I [k] ;
     }
 
     GB_qsort_1 ((int64_t *) I2, ni) ;
 
     //--------------------------------------------------------------------------
-    // remove duplicates from I2 
+    // remove duplicates from I2
     //--------------------------------------------------------------------------
 
     int64_t ni2 = 1 ;
     for (int64_t k = 1 ; k < ni ; k++)
     {
         if (I2 [ni2-1] != I2 [k])
-        {
+        { 
             I2 [ni2++] = I2 [k] ;
         }
     }
@@ -61,6 +59,6 @@ GrB_Info GB_ijsort
     *p_I2 = I2 ;        // I2 has size ni, but only I2 [0..ni2-1] is defined
     *p_ni = ni2 ;
 
-    return (GrB_SUCCESS) ;
+    return (REPORT_SUCCESS) ;
 }
 

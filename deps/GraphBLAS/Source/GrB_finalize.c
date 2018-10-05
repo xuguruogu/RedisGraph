@@ -2,7 +2,7 @@
 // GrB_finalize: finalize GraphBLAS
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -13,16 +13,15 @@
 // held internally in thread-local storage.  It can be called at any time and
 // can be followed by GraphBLAS function.
 
+// The error condition is not modified with "return (REPORT_SUCCESS)" so that
+// GrB_error can be called to report any prior error.
+
 #include "GB.h"
 
 GrB_Info GrB_finalize ( )
-{
+{ 
 
-    // free all workspace
-    GB_Mark_free ( ) ;
-    GB_Work_free ( ) ;
-    GB_Flag_free ( ) ;
-
+    GB_wfree ( ) ;              // free all thread-local workspace
     return (GrB_SUCCESS) ;      // method always succeeds
 }
 

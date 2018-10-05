@@ -11,8 +11,8 @@
 //  1:  Burkhardt:  ntri = sum (sum ((A^2) .* A)) / 6
 //  2:  Cohen:      ntri = sum (sum ((L * U) .* A)) / 2
 //  3:  Sandia:     ntri = sum (sum ((U * U) .* U))
-//  4:  SandiaDot:  ntri = sum (sum ((L' * U) .* U)).  Note that L'=U.
-//  5:  SanidaL:    ntri = sum (sum ((L * L) .* L))
+//  4:  SandiaL:    ntri = sum (sum ((L * L) .* L))
+//  5:  SandiaDot:  ntri = sum (sum ((L' * U) .* U)).  Note that L'=U.
 
 // Method 0 can take a huge amount of memory, for all of A*E.  As a result,
 // it often fails for large problems.
@@ -64,7 +64,7 @@ void two (uint32_t *z, const uint32_t *x)
 GrB_Info tricount           // count # of triangles
 (
     int64_t *p_ntri,        // # of trianagles
-    const int method,       // 0 to 4, see above
+    const int method,       // 0 to 5, see above
     const GrB_Matrix A,     // adjacency matrix for methods 0, 1, and 2
     const GrB_Matrix E,     // edge incidence matrix for method 0
     const GrB_Matrix L,     // L=tril(A) for methods 2, 4, and 4
@@ -161,7 +161,7 @@ GrB_Info tricount           // count # of triangles
             OK (GrB_Matrix_nrows (&n, U)) ;
             OK (GrB_Matrix_new (&C, GrB_UINT32, n, n)) ;
             OK (GrB_Descriptor_new (&d)) ;
-            OK (GrB_Descriptor_set (d, GrB_INP0, GrB_TRAN)) ;
+            OK (GxB_set (d, GrB_INP0, GrB_TRAN)) ;
             // mxm:  dot product method, with mask
             OK (GrB_mxm (C, U, NULL, GxB_PLUS_TIMES_UINT32, L, U, d)) ;
             t [0] = simple_toc (tic) ;

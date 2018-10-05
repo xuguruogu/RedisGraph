@@ -2,7 +2,7 @@
 // GB_mx_string_to_UnaryOp.c: get a GraphBLAS operator from MATLAB strings
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
@@ -301,7 +301,7 @@ bool GB_mx_string_to_UnaryOp           // true if successful, false otherwise
     if (opcode_return  != NULL) *opcode_return  = opcode ;
 
     // return the unary operator to the caller
-    ASSERT_OK (GB_check (op, "got unary op", 0)) ;
+    ASSERT_OK (GB_check (op, "got unary op", D0)) ;
     (*handle) = op ;
     return (true) ;
 }

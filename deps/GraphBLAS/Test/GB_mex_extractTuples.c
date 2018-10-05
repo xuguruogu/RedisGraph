@@ -2,18 +2,20 @@
 // GB_mex_extractTuples: extract all tuples from a matrix or vector
 //------------------------------------------------------------------------------
 
-// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017, All Rights Reserved.
+// SuiteSparse:GraphBLAS, Timothy A. Davis, (c) 2017-2018, All Rights Reserved.
 // http://suitesparse.com   See GraphBLAS/Doc/License.txt for license.
 
 //------------------------------------------------------------------------------
 
 #include "GB_mex.h"
 
+#define USAGE "[I,J,X] = GB_mex_extractTuples (A, xclass)"
+
 #define FREE_ALL                        \
 {                                       \
     GB_MATRIX_FREE (&A) ;               \
     GB_FREE_MEMORY (Xtemp, nvals, sizeof (double complex)) ; \
-    GB_mx_put_global (malloc_debug) ;   \
+    GB_mx_put_global (true) ;           \
 }
 
 void mexFunction
@@ -25,7 +27,7 @@ void mexFunction
 )
 {
 
-    bool malloc_debug = GB_mx_get_global ( ) ;
+    bool malloc_debug = GB_mx_get_global (true) ;
     GrB_Matrix A = NULL ;
     void *Y = NULL ;
     void *Xtemp = NULL ;
@@ -33,16 +35,17 @@ void mexFunction
     GrB_Index nvals = 0 ;
 
     // check inputs
+    WHERE (USAGE) ;
     if (nargout > 3 || nargin < 1 || nargin > 2)
     {
-        mexErrMsgTxt ("Usage: [I,J,X] = GB_mex_extractTuples (A, xclass)") ;
+        mexErrMsgTxt ("Usage: " USAGE) ;
     }
 
     #define GET_DEEP_COPY ;
     #define FREE_DEEP_COPY ;
 
     // get A (shallow copy)
-    A = GB_mx_mxArray_to_Matrix (pargin [0], "A input", false) ;
+    A = GB_mx_mxArray_to_Matrix (pargin [0], "A input", false, true) ;
     if (A == NULL)
     {
         FREE_ALL ;
@@ -98,7 +101,7 @@ void mexFunction
     }
 
     // [I,J,X] = find (A)
-    if (A->ncols == 1)
+    if (VECTOR_OK (A))
     {
         // test extract vector methods
         GrB_Vector v = (GrB_Vector) A ;
