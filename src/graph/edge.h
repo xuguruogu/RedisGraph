@@ -35,7 +35,7 @@ struct Edge {
 	Node* src;
 	Node* dest;
 	GrB_Matrix mat;				// Adjacency matrix, associated with edge.
-	UT_hash_handle hh;			// makes this structure hashable.
+	// UT_hash_handle hh;			// makes this structure hashable.
 };
 
 typedef struct Edge Edge;

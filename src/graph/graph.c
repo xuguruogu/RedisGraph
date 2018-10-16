@@ -121,8 +121,6 @@ void _Graph_ReplaceDeletedNode(Graph *g, GrB_Vector zero, NodeID replacement, No
         Edge *e;
         Vector_Get(edges, i, &e);
 
-        HASH_DEL(g->_edgesHashTbl, e);
-
         /* Update edge source/dest node,
          * as we've changed replacement node id. */
         if(Edge_GetSrcNodeID(e) == replacement) {
@@ -130,8 +128,6 @@ void _Graph_ReplaceDeletedNode(Graph *g, GrB_Vector zero, NodeID replacement, No
         } else {
             Edge_SetDestNode(e, replacementNode);
         }
-
-        HASH_ADD(hh, g->_edgesHashTbl, edgeDesc, sizeof(e->edgeDesc), e);
     }
 
     // Update label matrices.
@@ -194,40 +190,10 @@ void _Graph_ClearMatrixEntry(Graph *g, GrB_Matrix M, GrB_Index src, GrB_Index de
     GrB_Vector_free(&mask);
 }
 
-/* Initialize edge and store it within graph's edge hashtable
- * edge key within the hashtable is composed of:
- * 1. Edge relation ID
- * 2. Edge source node ID
- * 3. Edge destination node ID */
-int _Graph_InitEdge(Graph *g, Edge *e, EdgeID id, Node *src, Node *dest, int r) {
-    // Insert only if edge not already in hashtable.
-    Edge *edge;
-    EdgeDesc lookupKey = {src->id, dest->id, r};
-    HASH_FIND(hh, g->_edgesHashTbl, &lookupKey, sizeof(EdgeDesc), edge);
-
-    if(edge) {
-        /* TODO: Currently we only support a single edge of type T
-         * between tow nodes. */
-        return 0;
-    }
-
-    // Set edge composite ID.
-    e->id = id;
-    Edge_SetSrcNode(e, src);
-    Edge_SetDestNode(e, dest);
-    Edge_SetRelationID(e, r);
-
-    // Store edge within graph's edge hashtable
-    HASH_ADD(hh, g->_edgesHashTbl, edgeDesc, sizeof(EdgeDesc), e);
-    return 1;
-}
 
 /* Removes an edge from Graph's hashtable and updates 
  * graph relevent matrices. */
 void _Graph_DeleteEdge(Graph *g, Edge *e) {
-    // Remove edge from hashtable.
-    HASH_DEL(g->_edgesHashTbl, e);
-
     // Update relation matrices.
     int r = Edge_GetRelationID(e);
     NodeID src_id = Edge_GetSrcNodeID(e);
@@ -260,7 +226,7 @@ Graph *Graph_New(size_t n) {
     // TODO Our node iterators always cast the elements of this
     // to Nodes, but only the GraphEntity portion can be safely accessed
     g->nodes = DataBlock_New(n, sizeof(GraphEntity));
-    g->edges = DataBlock_New(n, sizeof(Edge));
+    g->edges = DataBlock_New(n, sizeof(GraphEntity));
     g->_edgesHashTbl = NULL;            // Init to NULL, required by uthash.
     g->relation_cap = GRAPH_DEFAULT_RELATION_CAP;
     g->relation_count = 0;
@@ -336,13 +302,11 @@ void Graph_ConnectNodes(Graph *g, EdgeDesc *connections, size_t connectionCount,
         EdgeDesc conn = connections[i];
         Node *srcNode = Graph_GetNode(g, conn.srcId);
         Node *destNode = Graph_GetNode(g, conn.destId);
-        int r = conn.relationId;        
-        if(_Graph_InitEdge(g, e, edgeID++, srcNode, destNode, r)) {
-            // Columns represent source nodes, rows represent destination nodes.
-            GrB_Matrix M = Graph_GetRelation(g, r);
-            GrB_Matrix_setElement_BOOL(adj, true, conn.destId, conn.srcId);
-            GrB_Matrix_setElement_BOOL(M, true, conn.destId, conn.srcId);
-        }
+        int r = conn.relationId;
+        // Columns represent source nodes, rows represent destination nodes.
+        GrB_Matrix M = Graph_GetRelation(g, r);
+        GrB_Matrix_setElement_BOOL(adj, true, conn.destId, conn.srcId);
+        GrB_Matrix_setElement_BOOL(M, true, conn.destId, conn.srcId);
     }
 
     /* If access to newly created edges is requested
@@ -370,25 +334,6 @@ Edge *Graph_GetEdge(const Graph *g, EdgeID id) {
 }
 
 void Graph_GetEdgesConnectingNodes(const Graph *g, NodeID src, NodeID dest, int relation, Vector *edges) {
-    assert(g && src < Graph_NodeCount(g) && dest < Graph_NodeCount(g) && edges);
-    Edge *e;
-    EdgeDesc lookupKey = {src, dest, relation};
-    
-    // Search for edges.
-    if(relation != GRAPH_NO_RELATION) {
-        // Relation type specified.
-        HASH_FIND(hh, g->_edgesHashTbl, &lookupKey, sizeof(EdgeDesc), e);
-        if(e) Vector_Push(edges, e);
-    } else {
-        // Relation type missing, scan through each edge type.
-        for(int r = 0; r < g->relation_count; r++) {
-            // Update lookup relation id.
-            lookupKey.relationId = r;
-            // See if there's an edge of type 'r' connecting source to destination.
-            HASH_FIND(hh, g->_edgesHashTbl, &lookupKey, sizeof(EdgeDesc), e);
-            if(e) Vector_Push(edges, e);
-        }
-    }
 }
 
 /* Retrieves all either incoming or outgoing edges 
@@ -714,7 +659,6 @@ void Graph_Free(Graph *g) {
     // Free node blocks.
     DataBlock_Free(g->nodes);
     // Free the edges hash table before modifying the edge blocks.
-    HASH_CLEAR(hh,g->_edgesHashTbl);
     // Free the edge blocks.
     DataBlock_Free(g->edges);
     pthread_mutex_destroy(&g->_mutex);
