@@ -8,7 +8,7 @@
 #include "./optimizer.h"
 #include "./optimizations.h"
 
-void optimizePlan(GraphContext *gc, ExecutionPlan *plan) {
+void optimizePlan(GraphContext *gc, ExecutionPlan *plan, AST_Query *ast) {
     /* When possible, replace label scan and filter ops
      * with index scans. */
     utilizeIndices(gc, plan);
@@ -18,4 +18,6 @@ void optimizePlan(GraphContext *gc, ExecutionPlan *plan) {
 
     /* Remove redundant SCAN operations. */
     // reduceScans(plan);
+
+    skipCounting(plan, ast);
 }

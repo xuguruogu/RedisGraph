@@ -451,7 +451,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
     }
     
     Vector_Free(ops);
-    optimizePlan(gc, execution_plan);
+    optimizePlan(gc, execution_plan, ast);
 
     return execution_plan;
 }

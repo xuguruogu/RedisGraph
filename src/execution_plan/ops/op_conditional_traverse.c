@@ -39,8 +39,10 @@ void _extractColumn(CondTraverse *op, const Record r) {
     // Remove operand.
     AlgebraicExpression_RemoveTerm(op->algebraic_expression, op->algebraic_expression->operand_count-1, NULL);
 
-    if(op->iter == NULL) op->iter = TuplesIter_new(op->M);
-    else TuplesIter_reuse(op->iter, op->M);
+    if(op->iterate) {
+        if(op->iter == NULL) op->iter = TuplesIter_new(op->M);
+        else TuplesIter_reuse(op->iter, op->M);
+    }
 
     // Clear filter matrix.
     GxB_Matrix_Delete(op->F, srcId, 0);
@@ -53,6 +55,7 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *algebraic_expression) {
     traverse->algebraic_results = NULL;
     traverse->iter = NULL;
     traverse->edges = NULL;
+    traverse->iterate = true;
     
     // Set our Op operations
     OpBase_Init(&traverse->op);
@@ -74,6 +77,8 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *algebraic_expression) {
         traverse->edgeRelationType = Edge_GetRelationID(algebraic_expression->edge);
     }
 
+    GrB_Matrix_new(&traverse->F, GrB_BOOL, Graph_RequiredMatrixDim(g), 1);
+
     return (OpBase*)traverse;
 }
 
@@ -84,61 +89,73 @@ OpResult CondTraverseConsume(OpBase *opBase, Record *r) {
     CondTraverse *op = (CondTraverse*)opBase;
     OpBase *child = op->op.children[0];
     
-    /* Not initialized. */
-    if(op->iter == NULL) {
-        if(child->consume(child, r) == OP_DEPLETED) return OP_DEPLETED;
+    if(op->iterate) {
+        
+        /* Not initialized. */
+        if(op->iter == NULL) {
+            if(child->consume(child, r) == OP_DEPLETED) return OP_DEPLETED;            
 
-        GrB_Matrix_new(&op->F, GrB_BOOL, Graph_RequiredMatrixDim(op->graph), 1);
+            /* Pick a column. */
+            _extractColumn(op, *r);
 
-        /* Pick a column. */
-        _extractColumn(op, *r);
+            // Introduce entities to record.
+            char *destNodeAlias = op->algebraic_results->dest_node->alias;
+            Record_AddEntry(r, destNodeAlias, SI_PtrVal(op->algebraic_expression->dest_node));
 
-        // Introduce entities to record.
-        char *destNodeAlias = op->algebraic_results->dest_node->alias;
-        Record_AddEntry(r, destNodeAlias, SI_PtrVal(op->algebraic_expression->dest_node));
+            if(op->algebraic_expression->edge != NULL) {
+                char *edgeAlias = op->algebraic_expression->edge->alias;
+                Record_AddEntry(r, edgeAlias, SI_PtrVal(op->algebraic_expression->edge));
+            }
+        }
+
+        /* If we're required to update edge,
+        * try to get an edge, if successful we can return quickly,
+        * otherwise try to get a new pair of source and destination nodes. */
+        if(op->algebraic_expression->edge) {
+            if(_CondTraverse_SetEdge(op, r) == OP_OK) return OP_OK;
+        }
+        
+        NodeID dest_id;
+        while(TuplesIter_next(op->iter, &dest_id, NULL) == TuplesIter_DEPLETED) {
+            OpResult res = child->consume(child, r);
+            if(res != OP_OK) return res;
+            _extractColumn(op, *r);
+        }
+
+        /* Get node from current column. */
+        Graph_GetNode(op->graph, dest_id, op->algebraic_expression->dest_node);
 
         if(op->algebraic_expression->edge != NULL) {
-            char *edgeAlias = op->algebraic_expression->edge->alias;
-            Record_AddEntry(r, edgeAlias, SI_PtrVal(op->algebraic_expression->edge));
+            // We're guarantee to have at least one edge.
+            Node *srcNode;
+            Node *destNode;
+
+            if(op->algebraic_expression->operands[0].transpose) {
+                srcNode = op->algebraic_expression->dest_node;
+                destNode = op->algebraic_expression->src_node;
+            } else {
+                srcNode = op->algebraic_expression->src_node;
+                destNode = op->algebraic_expression->dest_node;            
+            }
+
+            Graph_GetEdgesConnectingNodes(op->graph,
+                                        ENTITY_GET_ID(srcNode),
+                                        ENTITY_GET_ID(destNode),
+                                        op->edgeRelationType,
+                                        &op->edges);
+            return _CondTraverse_SetEdge(op, r);
         }
-    }
+    } else {
+        // No need to perform iterations
+        // Simply place resulting matrix at destination.
 
-    /* If we're required to update edge,
-     * try to get an edge, if successful we can return quickly,
-     * otherwise try to get a new pair of source and destination nodes. */
-    if(op->algebraic_expression->edge) {
-        if(_CondTraverse_SetEdge(op, r) == OP_OK) return OP_OK;
-    }
-    
-    NodeID dest_id;
-    while(TuplesIter_next(op->iter, &dest_id, NULL) == TuplesIter_DEPLETED) {
-        OpResult res = child->consume(child, r);
-        if(res != OP_OK) return res;
-        _extractColumn(op, *r);
-    }
+         if(child->consume(child, r) == OP_DEPLETED) return OP_DEPLETED;
 
-    /* Get node from current column. */
-    Graph_GetNode(op->graph, dest_id, op->algebraic_expression->dest_node);
+         /* Pick a column. */
+         _extractColumn(op, *r);
 
-    if(op->algebraic_expression->edge != NULL) {
-        // We're guarantee to have at least one edge.
-        Node *srcNode;
-        Node *destNode;
-
-        if(op->algebraic_expression->operands[0].transpose) {
-            srcNode = op->algebraic_expression->dest_node;
-            destNode = op->algebraic_expression->src_node;
-        } else {
-            srcNode = op->algebraic_expression->src_node;
-            destNode = op->algebraic_expression->dest_node;            
-        }
-
-        Graph_GetEdgesConnectingNodes(op->graph,
-                                      ENTITY_GET_ID(srcNode),
-                                      ENTITY_GET_ID(destNode),
-                                      op->edgeRelationType,
-                                      &op->edges);
-        return _CondTraverse_SetEdge(op, r);
+        char *destNodeAlias = op->algebraic_results->dest_node->alias;
+        Record_AddEntry(r, destNodeAlias, SI_PtrVal(op->M));
     }
 
     return OP_OK;

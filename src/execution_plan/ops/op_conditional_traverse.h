@@ -25,6 +25,7 @@ typedef struct {
     int edgeRelationType;
     Edge *edges;
     TuplesIter *iter;
+    bool iterate;       // Marks if iteration is required, if not simply pass result matrix.
 } CondTraverse;
 
 /* Creates a new Traverse operation */

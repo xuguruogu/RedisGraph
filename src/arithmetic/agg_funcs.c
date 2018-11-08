@@ -222,6 +222,41 @@ AggCtx* Agg_CountFunc() {
 //------------------------------------------------------------------------
 
 typedef struct {
+    size_t count;
+} __agg_matrixCountCtx;
+
+int __agg_matrixCountStep(AggCtx *ctx, SIValue *argv, int argc) {
+    __agg_matrixCountCtx *ac = Agg_FuncCtx(ctx);
+
+    if (SIValue_IsNullPtr(&argv[0])) {
+        ac->count += 0;
+        return AGG_OK;
+    }
+
+    GrB_Index nvals = 0;
+    GrB_Matrix mat = argv[0].ptrval;
+    GrB_Matrix_nvals(&nvals, mat);
+    ac->count += nvals;
+
+    return AGG_OK;
+}
+
+int __agg_matrixCountReduceNext(AggCtx *ctx) {
+    __agg_matrixCountCtx *ac = Agg_FuncCtx(ctx);
+    Agg_SetResult(ctx, SI_DoubleVal(ac->count));
+    return AGG_OK;
+}
+
+AggCtx* Agg_matrixCountFunc() {
+    __agg_matrixCountCtx *ac = malloc(sizeof(__agg_matrixCountCtx));
+    ac->count = 0;
+    
+    return Agg_Reduce(ac, __agg_matrixCountStep, __agg_matrixCountReduceNext);
+}
+
+//------------------------------------------------------------------------
+
+typedef struct {
     double percentile;
     double *values;
     size_t count;
@@ -425,6 +460,7 @@ void Agg_RegisterFuncs() {
     Agg_RegisterFunc("max", Agg_MaxFunc);
     Agg_RegisterFunc("min", Agg_MinFunc);
     Agg_RegisterFunc("count", Agg_CountFunc);
+    Agg_RegisterFunc("matCount", Agg_matrixCountFunc);
     Agg_RegisterFunc("percentileDisc", Agg_PercDiscFunc);
     Agg_RegisterFunc("percentileCont", Agg_PercContFunc);
     Agg_RegisterFunc("stDev", Agg_StdevFunc);

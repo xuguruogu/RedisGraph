@@ -5,13 +5,12 @@
 * modified with the Commons Clause restriction.
 */
 
-#ifndef __EXECUTION_PLAN_OPTIMIZER_H__
-#define __EXECUTION_PLAN_OPTIMIZER_H__
+#ifndef __OPTIMIZE_QUICK_COUNT__
+#define __OPTIMIZE_QUICK_COUNT__
 
 #include "../execution_plan.h"
 #include "../../parser/ast.h"
 
-/* Try to optimize an execution plan */
-void optimizePlan(GraphContext *gc, ExecutionPlan *plan, AST_Query *ast);
+void skipCounting(ExecutionPlan *plan, AST_Query *ast);
 
 #endif
