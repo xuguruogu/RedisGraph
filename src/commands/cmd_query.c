@@ -7,11 +7,14 @@
 #include "cmd_query.h"
 #include "cmd_context.h"
 #include "../graph/graph.h"
+#include "../parser/newast.h"
 #include "../query_executor.h"
 #include "../util/simple_timer.h"
 #include "../execution_plan/execution_plan.h"
 #include "../util/arr.h"
 #include "../util/rmalloc.h"
+#include "../../deps/libcypher-parser/lib/src/cypher-parser.h"
+
 
 static void _index_operation(RedisModuleCtx *ctx, GraphContext *gc, AST_IndexNode *indexNode) {
     /* Set up nested array response for index creation and deletion,
@@ -69,6 +72,19 @@ void _MGraph_Query(void *args) {
     AST **ast = qctx->ast;
     bool readonly = AST_ReadOnly(ast);
     bool lockAcquired = false;
+
+    /* New parser */
+    const char* query = RedisModule_StringPtrLen(qctx->argv[1], NULL);
+    cypher_parse_result_t *new_ast = cypher_parse(query, NULL, NULL, CYPHER_PARSE_ONLY_STATEMENTS);
+    if (new_ast == NULL) {
+        perror("cypher_parse");
+        return;
+    }
+
+    readonly = NEWAST_ReadOnly(new_ast);
+    cypher_parse_result_free(new_ast);
+    
+    /* END OF New parser */
 
     // Try to access the GraphContext
     CommandCtx_ThreadSafeContextLock(qctx);
@@ -154,7 +170,14 @@ int MGraph_Query(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         free(errMsg);
         return REDISMODULE_OK;
     }
-    bool readonly = AST_ReadOnly(ast);
+
+    cypher_parse_result_t *new_ast = cypher_parse(query, NULL, NULL, CYPHER_PARSE_ONLY_STATEMENTS);
+    if (new_ast == NULL) {
+        perror("cypher_parse");
+        return REDISMODULE_OK;
+    }
+    bool readonly = NEWAST_ReadOnly(new_ast);
+    cypher_parse_result_free(new_ast);
 
     /* Determin query execution context
      * queries issued within a LUA script or multi exec block must
