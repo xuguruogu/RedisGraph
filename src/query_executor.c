@@ -16,6 +16,7 @@
 #include "parser/parser_common.h"
 #include "procedures/procedure.h"
 #include "arithmetic/repository.h"
+#include "../deps/libcypher-parser/lib/src/cypher-parser.h"
 
 static void _inlineProperties(AST *ast) {
     /* Migrate inline filters to WHERE clause. */
@@ -311,32 +312,17 @@ static void _AST_reverse_match_patterns(AST *ast) {
     ast->matchNode = New_AST_MatchNode(patterns);
 }
 
-static void _AST_optimize_traversal_direction(AST *ast) {
-    /* Inspect each MATCH pattern,
-     * see if the number of edges going from right to left ()<-[]-()
-     * is greater than the number of edges going from left to right ()-[]->()
-     * in which case it's worth reversing the pattern to reduce 
-     * matrix transpose operations. */
-
-    bool should_reverse = false;
-    size_t pattern_count = Vector_Size(ast->matchNode->patterns);
-    for(int i = 0; i < pattern_count; i++) {
-        Vector *pattern;
-        Vector_Get(ast->matchNode->patterns, i, &pattern);
-
-        if(_AST_should_reverse_pattern(pattern)) {
-            should_reverse = true;
-            break;            
-        }
+void ModifyAST(GraphContext *gc, AST *ast, const cypher_parse_result_t *new_ast) {
+    if(ast->mergeNode) {
+        /* Create match clause which will try to match 
+         * against pattern specified within merge clause. */
+        _replicateMergeClauseToMatchClause(ast);
     }
 
-    if(should_reverse) _AST_reverse_match_patterns(ast);
-}
-
-void ModifyAST(AST **ast) {
-    for(int i = 0; i < array_len(ast); i++) {
-        if(ast[i]->matchNode) _AST_optimize_traversal_direction(ast[i]);
-        _inlineProperties(ast[i]);
+    // if(ReturnClause_ContainsCollapsedNodes(ast->returnNode) == 1) {
+    if(NEWAST_ReturnClause_ContainsCollapsedNodes(new_ast) == 1) {
+        /* Expand collapsed nodes. */
+        _returnClause_ExpandCollapsedNodes(gc, ast);
     }
     // Only the final AST may contain a RETURN clause
     AST *final_ast = ast[array_len(ast) - 1];

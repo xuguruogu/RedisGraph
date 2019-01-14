@@ -1,21 +1,32 @@
 import os
 import sys
+import redis
 import unittest
 from redisgraph import Graph
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../../demo/imdb/')
-from disposableredis import DisposableRedis
-
-from .reversepattern import ReversePattern
 from base import FlowTestsBase
 import imdb_queries
 import imdb_utils
 
 queries = None
 redis_graph = None
+redis_con = None
+dis_redis = None
 
-def redis():
-    return DisposableRedis(loadmodule=os.path.dirname(os.path.abspath(__file__)) + '/../../src/redisgraph.so')
+def get_redis():
+    global dis_redis
+    conn = redis.Redis()
+    try:
+        conn.ping()
+        # Assuming RedisGraph is loaded.
+    except redis.exceptions.ConnectionError:
+        from .disposableredis import DisposableRedis
+        # Bring up our own redis-server instance.
+        dis_redis = DisposableRedis(loadmodule=os.path.dirname(os.path.abspath(__file__)) + '/../../src/redisgraph.so')
+        dis_redis.start()
+        conn = dis_redis.client()
+    return conn
 
 class ImdbFlowTest(FlowTestsBase):
     @classmethod
@@ -23,16 +34,16 @@ class ImdbFlowTest(FlowTestsBase):
         print "ImdbFlowTest"
         global redis_graph
         global queries
-        cls.r = redis()
-        cls.r.start()
-        redis_con = cls.r.client()
+        global redis_con
+        redis_con = get_redis()
         redis_graph = Graph(imdb_utils.graph_name, redis_con)
         actors, movies = imdb_utils.populate_graph(redis_con, redis_graph)
         queries = imdb_queries.IMDBQueries(actors, movies)
 
     @classmethod
     def tearDownClass(cls):
-        cls.r.stop()
+        if dis_redis is not None:
+            dis_redis.stop()
 
     def assert_reversed_pattern(self, query, resultset):
         # Test reversed pattern query.
