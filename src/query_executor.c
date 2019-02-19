@@ -58,7 +58,7 @@ static void _inlineProperties(AST *ast) {
             rhs = New_AST_AR_EXP_ConstOperandNode(*val);
 
             AST_FilterNode *filterNode = New_AST_PredicateNode(lhs, EQ, rhs);
-            
+
             /* Create WHERE clause if missing. */
             if(ast->whereNode == NULL) {
                 ast->whereNode = New_AST_WhereNode(filterNode);
@@ -89,7 +89,7 @@ static void _inlineProcedureYield(AST_ProcedureCallNode *node) {
 }
 
 /* Shares merge pattern with match clause. */
-static void _replicateMergeClauseToMatchClause(AST *ast) {    
+static void _replicateMergeClauseToMatchClause(AST *ast) {
     assert(ast->mergeNode && !ast->matchNode);
 
     /* Match node is expecting a vector of vectors,
@@ -117,6 +117,32 @@ static void _replicateCallClauseToReturnClause(AST *ast) {
         AST_ReturnElementNode *returnElement = New_AST_ReturnElementNode(exp, alias);
         returnElements = array_append(returnElements, returnElement);
     }
+}
+
+ReturnElementNode* _NewReturnElementNode(const char *alias, AR_ExpNode *exp) {
+    ReturnElementNode *elem = rm_malloc(sizeof(ReturnElementNode));
+    elem->alias = alias;
+    elem->exp = exp;
+    return elem;
+}
+
+void ExpandCollapsedNodes(AST *ast) {
+    char buffer[256];
+    GraphContext *gc = GraphContext_GetFromLTS();
+
+    /* Expanding the RETURN clause is a two phase operation:
+     * 1. Scan through every arithmetic expression within the original
+     * RETURN clause and add it to a temporary vector,
+     * if we bump into an asterisks marker indicating we should expand
+     * all nodes, relations and paths, add thoese to the temporary vector.
+     *
+     * 2. Scanning though the temporary vector we expand each collapsed entity
+     * this will form the final RETURN clause. */
+
+    AST_ReturnNode *returnClause = ast->returnNode;
+    size_t returnElementCount = array_len(returnClause->returnElements);
+    AST_ReturnElementNode **elementsToExpand = array_new(AST_ReturnElementNode*, returnElementCount);
+>>>>>>> Minor changes
 
     int distinct = 0;
     ast->returnNode = New_AST_ReturnNode(returnElements, distinct);
@@ -133,6 +159,7 @@ static void _populateReturnAll(AST *ast) {
     UnwindClause_DefinedEntities(ast->unwindNode, identifiers);
     WithClause_DefinedEntities(ast->withNode, identifiers);
 
+<<<<<<< HEAD
     char buffer[256];
     // Allocate a new return element array to contain all user-provided aliases
     AST_ReturnElementNode **entities = array_new(AST_ReturnElementNode*, identifiers->cardinality);
@@ -153,6 +180,117 @@ static void _populateReturnAll(AST *ast) {
         AST_ArithmeticExpressionNode *arNode = New_AST_AR_EXP_VariableOperandNode(buffer, NULL);
         AST_ReturnElementNode *returnEntity = New_AST_ReturnElementNode(arNode, NULL);
         entities = array_append(entities, returnEntity);
+=======
+    // Scan through return elements, see if we can find '*' marker.
+    for(int i = 0; i < returnElementCount; i++) {
+        AST_ReturnElementNode *retElement = returnClause->returnElements[i];
+        if(retElement->asterisks) {
+            // TODO: '*' can not be mixed with any other expression!
+            array_clear(elementsToExpand);
+            /* Expand with "RETURN *" queries.
+             * Extract all entities from MATCH clause and add them to RETURN clause.
+             * These will get expended later on. */
+            char *ptr;
+            tm_len_t len;
+            void *value;
+            TrieMapIterator *it = TrieMap_Iterate(identifiers, "", 0);
+            while(TrieMapIterator_Next(it, &ptr, &len, &value)) {
+                AST_GraphEntity *entity = (AST_GraphEntity*)value;
+                if(entity->anonymous) continue;
+
+                len = MIN(255, len);
+                memcpy(buffer, ptr, len);
+                buffer[len] = '\0';
+
+                AST_ArithmeticExpressionNode *arNode = New_AST_AR_EXP_VariableOperandNode(buffer, NULL);
+                AST_ReturnElementNode *returnEntity = New_AST_ReturnElementNode(arNode, NULL);
+                elementsToExpand = array_append(elementsToExpand, returnEntity);
+            }
+
+            TrieMapIterator_Free(it);
+            Free_AST_ReturnElementNode(retElement);
+            break;
+        }
+        else {
+            elementsToExpand = array_append(elementsToExpand, retElement);
+        }
+    }
+
+    AST_ReturnElementNode **expandReturnElements = array_new(AST_ReturnElementNode*, array_len(elementsToExpand));
+
+    /* Scan return clause, search for collapsed nodes. */
+    for(int i = 0; i < array_len(elementsToExpand); i++) {
+        AST_ReturnElementNode *ret_elem = elementsToExpand[i];
+        AST_ArithmeticExpressionNode *exp = ret_elem->exp;
+
+        /* Detect collapsed entity,
+         * A collapsed entity is represented by an arithmetic expression
+         * of AST_AR_EXP_OPERAND type,
+         * The operand type should be AST_AR_EXP_VARIADIC,
+         * lastly property should be missing. */
+
+        if(exp->type == AST_AR_EXP_OPERAND &&
+            exp->operand.type == AST_AR_EXP_VARIADIC &&
+            exp->operand.variadic.property == NULL) {
+
+            /* Return clause doesn't contains entity's label,
+             * Find collapsed entity's label. */
+            char *alias = exp->operand.variadic.alias;
+            AST_GraphEntity *collapsed_entity = TrieMap_Find(identifiers, alias, strlen(alias));
+            if(collapsed_entity == TRIEMAP_NOTFOUND) {
+                // It is possible that the current alias
+                // represent an expression such as in the case of an unwind clause.
+                expandReturnElements = array_append(expandReturnElements, ret_elem);
+                continue;
+            }
+
+            /* Find label's properties. */
+            SchemaType schema_type = (collapsed_entity->t == N_ENTITY) ? SCHEMA_NODE : SCHEMA_EDGE;
+            Schema *schema;
+
+            if(collapsed_entity->label) {
+                /* Collapsed entity has a label. */
+                schema = GraphContext_GetSchema(gc, collapsed_entity->label, schema_type);
+            } else {
+                /* Entity does have a label, Consult with unified schema. */
+                schema = GraphContext_GetUnifiedSchema(gc, schema_type);
+            }
+
+            void *ptr = NULL;       /* schema property value, (not in use). */
+            char *prop = NULL;      /* Entity property. */
+            tm_len_t prop_len = 0;  /* Length of entity's property. */
+            AST_ArithmeticExpressionNode *expanded_exp;
+            AST_ReturnElementNode *retElem;
+            if(!schema || Schema_AttributeCount(schema) == 0) {
+                /* Schema missing or
+                 * label doesn't have any properties.
+                 * Create a fake return element. */
+                expanded_exp = New_AST_AR_EXP_ConstOperandNode(SI_ConstStringVal(""));
+                // Use the return entity's alias if provided, otherwise use the variable's
+                // name (which is never null).
+                char *ret_alias = (ret_elem->alias) ? strdup(ret_elem->alias) : strdup(alias);
+                retElem = New_AST_ReturnElementNode(expanded_exp, ret_alias);
+                expandReturnElements = array_append(expandReturnElements, retElem);
+            } else {
+                TrieMapIterator *it = TrieMap_Iterate(schema->attributes, "", 0);
+                while(TrieMapIterator_Next(it, &prop, &prop_len, &ptr)) {
+                    prop_len = MIN(255, prop_len);
+                    memcpy(buffer, prop, prop_len);
+                    buffer[prop_len] = '\0';
+
+                    /* Create a new return element foreach property. */
+                    expanded_exp = New_AST_AR_EXP_VariableOperandNode(collapsed_entity->alias, buffer);
+                    char *ret_alias = (ret_elem->alias) ? strdup(ret_elem->alias) : NULL;
+                    retElem = New_AST_ReturnElementNode(expanded_exp, ret_alias);
+                    expandReturnElements = array_append(expandReturnElements, retElem);
+                }
+                TrieMapIterator_Free(it);
+            }
+            /* Discard collapsed return element. */
+            Free_AST_ReturnElementNode(ret_elem);
+        } else {
+            expandReturnElements = array_append(expandReturnElements, ret_elem);
+        }
     }
 
     TrieMapIterator_Free(it);
@@ -182,7 +320,7 @@ AST** ParseQuery(const char *query, size_t qLen, char **errMsg) {
     return asts;
 }
 
-AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, AST **ast) {
+AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const cypher_astnode_t *ast) {
     char *reason;
     int ast_count = array_len(ast);
     for(int i = 0; i < ast_count; i++) {
@@ -233,7 +371,7 @@ AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, AST **ast) {
 }
 
 /* Counts the number of right to left edges,
- * if it's greater than half the number of edges in pattern 
+ * if it's greater than half the number of edges in pattern
  * return true.*/
 static bool _AST_should_reverse_pattern(Vector *pattern) {
     int transposed = 0; // Number of transposed edges
@@ -274,13 +412,38 @@ AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const cypher_parse_re
     ast->matchNode = New_AST_MatchNode(patterns);
 }
 
-void ModifyAST(GraphContext *gc, AST *ast, const cypher_parse_result_t *new_ast) {
+static void _AST_optimize_traversal_direction(AST *ast) {
+    /* Inspect each MATCH pattern,
+     * see if the number of edges going from right to left ()<-[]-()
+     * is greater than the number of edges going from left to right ()-[]->()
+     * in which case it's worth reversing the pattern to reduce
+     * matrix transpose operations. */
+
+    bool should_reverse = false;
+    size_t pattern_count = Vector_Size(ast->matchNode->patterns);
+    for(int i = 0; i < pattern_count; i++) {
+        Vector *pattern;
+        Vector_Get(ast->matchNode->patterns, i, &pattern);
+
+        if(_AST_should_reverse_pattern(pattern)) {
+            should_reverse = true;
+            break;
+        }
+    }
+
+    if(should_reverse) _AST_reverse_match_patterns(ast);
+}
+
+void ModifyAST(GraphContext *gc, AST *ast, NEWAST *new_ast) {
+    if(ast->matchNode) _AST_optimize_traversal_direction(ast);
+
     if(ast->mergeNode) {
-        /* Create match clause which will try to match 
+        /* Create match clause which will try to match
          * against pattern specified within merge clause. */
         _replicateMergeClauseToMatchClause(ast);
     }
 
+<<<<<<< HEAD
     // if(ReturnClause_ContainsCollapsedNodes(ast->returnNode) == 1) {
     if(NEWAST_ReturnClause_ContainsCollapsedNodes(new_ast) == 1) {
         /* Expand collapsed nodes. */
@@ -289,4 +452,8 @@ void ModifyAST(GraphContext *gc, AST *ast, const cypher_parse_result_t *new_ast)
     // Only the final AST may contain a RETURN clause
     AST *final_ast = ast[array_len(ast) - 1];
     _populateReturnAll(final_ast);
+=======
+    AST_NameAnonymousNodes(ast);
+    _inlineProperties(ast);
+>>>>>>> Minor changes
 }

@@ -17,7 +17,7 @@
 AST **ParseQuery(const char *query, size_t qLen, char **errMsg);
 
 /* Make sure AST is valid. */
-AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const cypher_parse_result_t *ast);
+AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const cypher_astnode_t *ast);
 
 /* Construct an expression tree foreach none aggregated term.
  * Returns a vector of none aggregated expression trees. */
@@ -26,10 +26,6 @@ void Build_None_Aggregated_Arithmetic_Expressions(AST *ast,
                                                   int *expressions_count);
 
 /* Performs a number of adjustments to given AST. */
-<<<<<<< HEAD
-void ModifyAST(AST **ast);
-=======
 void ModifyAST(GraphContext *gc, AST *ast, const cypher_parse_result_t *new_ast);
->>>>>>> modified parser buffer size to handle large queries, flowtest will try to connect to a local redis before instantiating their own disposable redis server, need to make sure that while flow tests run redis would not try to save/load RDB.
 
 #endif
