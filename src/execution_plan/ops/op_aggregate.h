@@ -21,7 +21,7 @@
  * return clause */
  typedef struct {
     OpBase op;
-    AST *ast;
+    NEWAST *ast;
     ResultSet *resultset;
     AR_ExpNode **none_aggregated_expressions;   /* Array of arithmetic expression. */
     AR_ExpNode **order_expressions;             /* Array of arithmetic expression. */

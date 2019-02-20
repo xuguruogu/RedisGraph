@@ -12,17 +12,14 @@
 static void _buildExpressions(Project *op) {
     // Compute projected record length:
     // Number of returned expressions + number of order-by expressions.
-    ExpandCollapsedNodes(op->ast);
     ResultSet_CreateHeader(op->resultset);
 
-    const AST *ast = op->ast;
-    uint orderByExpCount = 0;
-    uint returnExpCount = array_len(ast->returnNode->returnElements);
-    if(ast->orderNode) orderByExpCount = array_len(ast->orderNode->expressions);
-    uint expressionCount = returnExpCount + orderByExpCount;
+    NEWAST *ast = op->ast;
+
+    op->orderByExpCount = ast->order_expression_count;
+    op->returnExpCount = array_len(ast->return_expressions);
     
-    op->projectedRecordLen = expressionCount;
-    op->expressions = array_new(AR_ExpNode*, expressionCount);
+    op->expressions = rm_malloc((op->orderByExpCount + op->returnExpCount) * sizeof(AR_ExpNode*));
 
     // Compose RETURN clause expressions.
     for(uint i = 0; i < returnExpCount; i++) {
@@ -39,7 +36,7 @@ static void _buildExpressions(Project *op) {
 
 OpBase* NewProjectOp(ResultSet *resultset) {
     Project *project = malloc(sizeof(Project));
-    project->ast = AST_GetFromLTS();
+    project->ast = NEWAST_GetFromLTS();
     project->singleResponse = false;    
     project->expressions = NULL;
     project->resultset = resultset;
@@ -75,26 +72,24 @@ Record ProjectConsume(OpBase *opBase) {
 
     if(!op->expressions) _buildExpressions(op);
 
-    Record projectedRec = Record_New(op->projectedRecordLen);
+    Record projectedRec = Record_New(op->returnExpCount + op->orderByExpCount);
 
     uint expIdx = 0;
-    uint expCount = array_len(op->expressions);
-    uint returnExpCount = array_len(op->ast->returnNode->returnElements);
-
     // Evaluate RETURN clause expressions.
-    for(; expIdx < returnExpCount; expIdx++) {
+    for(; expIdx < op->returnExpCount; expIdx++) {
         SIValue v = AR_EXP_Evaluate(op->expressions[expIdx], r);
         Record_AddScalar(projectedRec, expIdx, v);
 
         // Incase expression is aliased, add it to record
         // as it might be referenced by other expressions:
         // e.g. RETURN n.v AS X ORDER BY X * X
-        char *alias = op->ast->returnNode->returnElements[expIdx]->alias;
-        if(alias) Record_AddScalar(r, AST_GetAliasID(op->ast, alias), v);
+        // TODO aliases
+        // const char *alias = op->ast->return_expressions[expIdx]->alias;
+        // if(alias) Record_AddScalar(r, NEWAST_GetAliasID(op->ast, (char*)alias), v);
     }
 
     // Evaluate ORDER BY clause expressions.
-    for(; expIdx < expCount; expIdx++) {
+    for(; expIdx < op->returnExpCount + op->orderByExpCount; expIdx++) {
         SIValue v = AR_EXP_Evaluate(op->expressions[expIdx], r);
         Record_AddScalar(projectedRec, expIdx, v);
     }
@@ -110,8 +105,8 @@ OpResult ProjectReset(OpBase *ctx) {
 void ProjectFree(OpBase *opBase) {
     Project *op = (Project*)opBase;
     if(op->expressions) {
-        uint expCount = array_len(op->expressions);
+        uint expCount = op->returnExpCount + op->orderByExpCount;
         for(uint i = 0; i < expCount; i++) AR_EXP_Free(op->expressions[i]);
-        array_free(op->expressions);
+        rm_free(op->expressions);
     }
 }

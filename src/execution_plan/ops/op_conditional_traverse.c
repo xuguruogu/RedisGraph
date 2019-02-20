@@ -8,18 +8,20 @@
 #include "op_conditional_traverse.h"
 #include "../../util/arr.h"
 #include "../../GraphBLASExt/GxB_Delete.h"
+#include "../../parser/newast.h"
 
 static void _setupTraversedRelations(CondTraverse *op) {
-    AST *ast = AST_GetFromLTS();
+    NEWAST *ast = NEWAST_GetFromLTS();
     GraphContext *gc = GraphContext_GetFromLTS();
-    const char *alias = op->algebraic_expression->edge->alias;
-    AST_LinkEntity *e = (AST_LinkEntity*)MatchClause_GetEntity(ast->matchNode, alias);
-    op->edgeRelationCount = AST_LinkEntity_LabelCount(e);
-    
+    char *alias = op->algebraic_expression->edge->alias;
+    unsigned int id = NEWAST_GetAliasID(ast, alias);
+    NEWAST_GraphEntity *e = NEWAST_GetEntity(ast, id);
+    op->edgeRelationCount = cypher_ast_rel_pattern_nreltypes(e->ast_ref);
     if(op->edgeRelationCount > 0) {
         op->edgeRelationTypes = array_new(int , op->edgeRelationCount);
         for(int i = 0; i < op->edgeRelationCount; i++) {
-            Schema *s = GraphContext_GetSchema(gc, e->labels[i], SCHEMA_EDGE);
+            const char *label = cypher_ast_label_get_name(cypher_ast_rel_pattern_get_reltype(e->ast_ref, i));
+            Schema *s = GraphContext_GetSchema(gc, label, SCHEMA_EDGE);
             if(!s) continue;
             op->edgeRelationTypes = array_append(op->edgeRelationTypes, s->id);
         }
@@ -82,9 +84,9 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *algebraic_expression) {
     traverse->edges = NULL;
     traverse->r = NULL;    
 
-    AST *ast = AST_GetFromLTS();
-    traverse->srcNodeRecIdx = AST_GetAliasID(ast, algebraic_expression->src_node->alias);
-    traverse->destNodeRecIdx = AST_GetAliasID(ast, algebraic_expression->dest_node->alias);
+    NEWAST *ast = NEWAST_GetFromLTS();
+    traverse->srcNodeRecIdx = NEWAST_GetAliasID(ast, algebraic_expression->src_node->alias);
+    traverse->destNodeRecIdx = NEWAST_GetAliasID(ast, algebraic_expression->dest_node->alias);
     
     traverse->recordsLen = 0;
     traverse->recordsCap = _determinRecordCap(ast);
@@ -110,7 +112,7 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *algebraic_expression) {
         modified = traverse->algebraic_expression->edge->alias;
         Vector_Push(traverse->op.modifies, modified);
         traverse->edges = array_new(Edge, 32);
-        traverse->edgeRecIdx = AST_GetAliasID(ast, algebraic_expression->edge->alias);
+        traverse->edgeRecIdx = NEWAST_GetAliasID(ast, algebraic_expression->edge->alias);
     }
 
     return (OpBase*)traverse;

@@ -16,9 +16,10 @@
 
 typedef struct {
     OpBase op;
-    AST *ast;
+    NEWAST *ast;
     ResultSet *resultset;
-    uint projectedRecordLen;    // Length of projected record.
+    uint returnExpCount;
+    uint orderByExpCount;
     AR_ExpNode **expressions;   // Array of expressions to evaluate.
     bool singleResponse;        // When no child operations, return NULL after a first response.
 } Project;

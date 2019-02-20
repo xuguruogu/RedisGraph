@@ -164,13 +164,14 @@ void static _Column_Free(Column* column) {
 void ResultSet_CreateHeader(ResultSet *resultset) {
     assert(resultset->header == NULL && resultset->recordCount == 0);
 
-    const AST *ast = AST_GetFromLTS();
+    const NEWAST *ast = NEWAST_GetFromLTS();
     ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
     header->columns_len = 0;
     header->columns = NULL;
 
-    if(ast->returnNode != NULL) {
-        header->columns_len = array_len(ast->returnNode->returnElements);
+    unsigned int return_expression_count = array_len(ast->return_expressions);
+    if(return_expression_count > 0) {
+        header->columns_len = return_expression_count;
         header->columns = rm_malloc(sizeof(Column*) * header->columns_len);
     }
 

@@ -75,7 +75,7 @@ static Group* _CreateGroup(Aggregate *op, Record r) {
 
     // There's no need to keep a reference to record
     // if we're not performing aggregations.
-    if(!op->ast->orderNode) r = NULL;
+    if(op->ast->order_expression_count == 0) r = NULL;
     op->group = NewGroup(key_count, group_keys, agg_exps, r);
 
     return op->group;
@@ -154,8 +154,8 @@ static Record _handoff(Aggregate *op) {
     if(!CacheGroupIterNext(op->groupIter, &key, &group)) return NULL;
 
     // New record with len |return elements|
-    int returnElemCount = array_len(op->ast->returnNode->returnElements);
-    int orderElemCount = (op->ast->orderNode) ? array_len(op->ast->orderNode->expressions) : 0;
+    int returnElemCount = array_len(op->ast->return_expressions);
+    int orderElemCount = op->ast->order_expression_count;
     Record r = Record_New(returnElemCount + orderElemCount);
 
     // Populate record.
@@ -179,7 +179,7 @@ static Record _handoff(Aggregate *op) {
         /* TODO: this entire block can be improved, performancewise.
          * assuming the number of groups is relative small, 
          * this might be negligible. */
-        if(op->ast->orderNode) {
+        if(op->ast->order_expression_count > 0) {
             // If expression is aliased, introduce it to group record
             // for later evaluation by ORDER-BY expressions.
             char *alias = op->ast->returnNode->returnElements[i]->alias;
@@ -202,7 +202,7 @@ static Record _handoff(Aggregate *op) {
 OpBase* NewAggregateOp(ResultSet *resultset) {
     Aggregate *aggregate = malloc(sizeof(Aggregate));
     aggregate->init = 0;
-    aggregate->ast = AST_GetFromLTS();
+    aggregate->ast = NEWAST_GetFromLTS();
     aggregate->resultset = resultset;
     aggregate->none_aggregated_expressions = NULL;
     aggregate->expression_classification = NULL;
@@ -276,8 +276,8 @@ void AggregateFree(OpBase *opBase) {
     }
 
     if(op->order_expressions) {
-        uint32_t expCount = array_len(op->ast->orderNode->expressions);
-        for(int i = 0; i < expCount; i++) AR_EXP_Free(op->order_expressions[i]);
+        // uint32_t expCount = array_len(op->ast->orderNode->expressions);
+        // for(int i = 0; i < expCount; i++) AR_EXP_Free(op->order_expressions[i]);
         rm_free(op->order_expressions);
     }
 
