@@ -13,6 +13,8 @@
 // #include "../arithmetic/arithmetic_expression.h"
 #include "../../deps/libcypher-parser/lib/src/cypher-parser.h"
 
+// #define IDENTIFIER_NOT_FOUND UINT_MAX
+
 typedef enum {
 	AST_VALID,
 	AST_INVALID

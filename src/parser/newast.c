@@ -797,6 +797,7 @@ void NEWAST_BuildAliasMap(NEWAST *ast) {
 unsigned int NEWAST_GetAliasID(const NEWAST *ast, char *alias) {
   assert(ast->identifier_map);
   void *v = TrieMap_Find(ast->identifier_map, alias, strlen(alias));
+  // if (v == TRIEMAP_NOTFOUND) return IDENTIFIER_NOT_FOUND;
   assert(v != TRIEMAP_NOTFOUND);
   unsigned int *id = v;
   return *id;

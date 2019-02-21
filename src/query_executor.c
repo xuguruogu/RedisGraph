@@ -261,8 +261,7 @@ void ExpandCollapsedNodes(NEWAST *ast) {
 
             /* Return clause doesn't contains entity's label,
              * Find collapsed entity's label. */
-            char *alias = (char*)elem->alias;
-            // char *alias = exp->operand.variadic.entity_alias;
+            char *alias = exp->operand.variadic.entity_alias;
             unsigned int id = NEWAST_GetAliasID(ast, alias);
             NEWAST_GraphEntity *collapsed_entity = NEWAST_GetEntity(ast, id);
             // Entity was an expression rather than a node or edge
@@ -472,12 +471,15 @@ void _BuildReturnExpressions(NEWAST *ast) {
         // If projection is aliased, use the aliased name in the arithmetic expression
         const char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
-        // Note - doesn't just capture AS aliases, but things like 'e.name'
-        // from RETURN e.name
         if (alias_node) {
             alias = cypher_ast_identifier_get_name(alias_node);
+            // TODO standardize logic (make a separate routine for this, can drop ID pointer elsewhere
+            unsigned int *entityID = malloc(sizeof(unsigned int));
+            *entityID = ast->identifier_map->cardinality;
+            TrieMap_Add(ast->identifier_map, (char*)alias, strlen(alias), entityID, TrieMap_NOP_REPLACE);
         } else if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
-            alias = cypher_ast_identifier_get_name(expr);
+            // TODO don't need to do anything, delete this section once validated
+            // alias = cypher_ast_identifier_get_name(expr);
         } else {
             assert(false);
         }

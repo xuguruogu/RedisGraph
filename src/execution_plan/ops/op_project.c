@@ -84,8 +84,8 @@ Record ProjectConsume(OpBase *opBase) {
         // as it might be referenced by other expressions:
         // e.g. RETURN n.v AS X ORDER BY X * X
         // TODO aliases
-        // const char *alias = op->ast->return_expressions[expIdx]->alias;
-        // if(alias) Record_AddScalar(r, NEWAST_GetAliasID(op->ast, (char*)alias), v);
+        const char *alias = op->ast->return_expressions[expIdx]->alias;
+        if(alias) Record_AddScalar(r, NEWAST_GetAliasID(op->ast, (char*)alias), v);
     }
 
     // Evaluate ORDER BY clause expressions.
