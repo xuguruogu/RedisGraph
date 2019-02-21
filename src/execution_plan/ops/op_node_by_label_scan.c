@@ -5,16 +5,17 @@
 */
 
 #include "op_node_by_label_scan.h"
-#include "../../parser/ast.h"
+#include "../../parser/newast.h"
 
-OpBase *NewNodeByLabelScanOp(Node *node, AST *ast) {
+OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node, NEWAST *ast) {
     NodeByLabelScan *nodeByLabelScan = malloc(sizeof(NodeByLabelScan));
     GraphContext *gc = GraphContext_GetFromTLS();
     nodeByLabelScan->g = gc->g;
     nodeByLabelScan->node = node;
     nodeByLabelScan->_zero_matrix = NULL;
-    nodeByLabelScan->nodeRecIdx = AST_GetAliasID(ast, node->alias);
-    nodeByLabelScan->recLength = AST_AliasCount(ast);
+
+    nodeByLabelScan->nodeRecIdx = NEWAST_GetAliasID(ast, node->alias);
+    nodeByLabelScan->recLength = NEWAST_AliasCount(ast);
 
     /* Find out label matrix ID. */
     Schema *schema = GraphContext_GetSchema(gc, node->label, SCHEMA_NODE);

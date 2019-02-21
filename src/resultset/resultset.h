@@ -10,7 +10,7 @@
 #include "resultset_header.h"
 #include "resultset_formatters.h"
 #include "resultset_statistics.h"
-#include "../parser/ast.h"
+#include "../parser/newast.h"
 #include "../redismodule.h"
 #include "../util/vector.h"
 #include "../execution_plan/record.h"

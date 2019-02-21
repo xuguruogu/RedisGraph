@@ -85,7 +85,7 @@ Record ProjectConsume(OpBase *opBase) {
          * as it might be referenced by other expressions:
          * e.g. RETURN n.v AS X ORDER BY X * X
          * WITH 1 as one, one+one as two */
-        char *alias = op->aliases[i];
+        char *alias = op->ast->return_expressions[i]->alias;
 
         Record_Add(projection, rec_idx, v);
         if (alias) Record_Add(r, AST_GetAliasID(op->ast, alias), v);
