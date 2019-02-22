@@ -10,7 +10,6 @@
 
 #include "ast_common.h"
 #include "../util/triemap/triemap.h"
-// #include "../arithmetic/arithmetic_expression.h"
 #include "../../deps/libcypher-parser/lib/src/cypher-parser.h"
 
 // #define IDENTIFIER_NOT_FOUND UINT_MAX
@@ -30,11 +29,10 @@ typedef struct {
 typedef struct {
     const cypher_astnode_t *root;
     // Extensible array of entities described in MATCH, MERGE, and CREATE clauses
-    // AST_Entity **defined_entities;
     AR_ExpNode **defined_entities;
     TrieMap *identifier_map;
-    unsigned int order_expression_count;
     ReturnElementNode **return_expressions;
+    unsigned int order_expression_count; // TODO maybe use arr.h instead
     AR_ExpNode **order_expressions;
 } NEWAST;
 
@@ -50,31 +48,17 @@ bool NEWAST_ContainsClause(const cypher_astnode_t *ast, cypher_astnode_type_t cl
 // Checks to see if query contains any errors.
 bool NEWAST_ContainsErrors(const cypher_parse_result_t *ast);
 
-// Returns specified clause of NULL.
-const cypher_astnode_t* NEWAST_GetClause(const cypher_astnode_t *query, cypher_astnode_type_t clause_type);
-
 // Report encountered errors.
 char* NEWAST_ReportErrors(const cypher_parse_result_t *ast);
 
 // Returns all function (aggregated & none aggregated) mentioned in query.
 void NEWAST_ReferredFunctions(const cypher_astnode_t *root, TrieMap *referred_funcs);
 
-//==============================================================================
-//=== RETURN CLAUSE ============================================================
-//==============================================================================
-
 // Checks if RETURN clause contains collapsed entities.
 int NEWAST_ReturnClause_ContainsCollapsedNodes(const cypher_astnode_t *ast);
 
-// Returns all function (aggregated & none aggregated) mentioned in query.
-void NEWAST_ReturnClause_ReferredFunctions(const cypher_astnode_t *return_clause, TrieMap *referred_funcs);
-
-//==============================================================================
-//=== WHERE CLAUSE =============================================================
-//==============================================================================
-
-// Returns all function (aggregated & none aggregated) mentioned in query.
-void NEWAST_WhereClause_ReferredFunctions(const cypher_astnode_t *match_clause, TrieMap *referred_funcs);
+// Returns specified clause or NULL.
+const cypher_astnode_t* NEWAST_GetClause(const cypher_astnode_t *query, cypher_astnode_type_t clause_type);
 
 unsigned int NewAST_GetTopLevelClauses(const cypher_astnode_t *query, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches);
 
