@@ -9,18 +9,20 @@
 #include "../../util/arr.h"
 #include "../../GraphBLASExt/GxB_Delete.h"
 #include "../../parser/newast.h"
+#include "../../arithmetic/arithmetic_expression.h"
 
 static void _setupTraversedRelations(CondTraverse *op) {
     NEWAST *ast = NEWAST_GetFromLTS();
     GraphContext *gc = GraphContext_GetFromLTS();
     char *alias = op->algebraic_expression->edge->alias;
     unsigned int id = NEWAST_GetAliasID(ast, alias);
-    NEWAST_GraphEntity *e = NEWAST_GetEntity(ast, id);
-    op->edgeRelationCount = cypher_ast_rel_pattern_nreltypes(e->ast_ref);
+    AR_ExpNode *e = NEWAST_GetEntity(ast, id);
+    const cypher_astnode_t *ast_entity = e->operand.variadic.ast_ref;
+    op->edgeRelationCount = cypher_ast_rel_pattern_nreltypes(ast_entity);
     if(op->edgeRelationCount > 0) {
         op->edgeRelationTypes = array_new(int , op->edgeRelationCount);
         for(int i = 0; i < op->edgeRelationCount; i++) {
-            const char *label = cypher_ast_reltype_get_name(cypher_ast_rel_pattern_get_reltype(e->ast_ref, i));
+            const char *label = cypher_ast_reltype_get_name(cypher_ast_rel_pattern_get_reltype(ast_entity, i));
             Schema *s = GraphContext_GetSchema(gc, label, SCHEMA_EDGE);
             if(!s) continue;
             op->edgeRelationTypes = array_append(op->edgeRelationTypes, s->id);

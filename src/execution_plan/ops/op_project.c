@@ -50,7 +50,6 @@ OpBase* NewProjectOp(ResultSet *resultset) {
     project->op.free = ProjectFree;
 
     return (OpBase*)project;
-    return NULL;
 }
 
 Record ProjectConsume(OpBase *opBase) {
@@ -83,7 +82,6 @@ Record ProjectConsume(OpBase *opBase) {
         // Incase expression is aliased, add it to record
         // as it might be referenced by other expressions:
         // e.g. RETURN n.v AS X ORDER BY X * X
-        // TODO aliases
         const char *alias = op->ast->return_expressions[expIdx]->alias;
         if(alias) Record_AddScalar(r, NEWAST_GetAliasID(op->ast, (char*)alias), v);
     }

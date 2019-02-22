@@ -177,12 +177,8 @@ static Record _handoff(Aggregate *op) {
         if(op->ast->order_expression_count > 0) {
             // If expression is aliased, introduce it to group record
             // for later evaluation by ORDER-BY expressions.
-            // TODO aliases
-            // char *alias = op->ast->returnNode->returnElements[i]->alias;
-            // if(alias) {
-                // int recIdx = AST_GetAliasID(op->ast, alias);
-                // Record_AddScalar(group->r, recIdx, res);
-            // }
+            const char *alias = op->ast->return_expressions[i]->alias;
+            if(alias) Record_AddScalar(group->r, NEWAST_GetAliasID(op->ast, (char*)alias), res);
         }
     }
 

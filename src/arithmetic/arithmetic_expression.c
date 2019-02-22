@@ -70,22 +70,26 @@ static AR_ExpNode* _AR_EXP_NewOpNode(char *func_name, int child_count) {
     return node;
 }
 
-AR_ExpNode* AR_EXP_NewVariableOperandNode(const NEWAST *ast, const char *entity_alias, const char *entity_prop) {
+AR_ExpNode* AR_EXP_NewVariableOperandNode(const NEWAST *ast, const cypher_astnode_t *entity, const char *alias, const char *prop) {
     AR_ExpNode *node = malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
     node->operand.type = AR_EXP_VARIADIC;
-    node->operand.variadic.entity_alias = strdup(entity_alias);
-    unsigned int id = NEWAST_GetAliasID(ast, (char*)entity_alias);
+    node->operand.variadic.entity_alias = strdup(alias);
+    unsigned int id = NEWAST_GetAliasID(ast, (char*)alias);
     node->operand.variadic.entity_alias_idx = id;
-    node->operand.variadic.entity_prop = NULL;
+    node->operand.variadic.entity_prop = (prop) ? strdup(prop) : NULL;
+    node->operand.variadic.ast_ref = entity;
 
-    if(entity_prop) {
-        node->operand.variadic.entity_prop = strdup(entity_prop);
-        // AST_Entity *e = NEWAST_GetEntity(ast, id);
-        NEWAST_GraphEntity *ge = NEWAST_GetEntity(ast, id);
-
-        SchemaType st = (ge->t == N_ENTITY) ? SCHEMA_NODE : SCHEMA_EDGE;
-        node->operand.variadic.entity_prop_idx = Attribute_GetID(st, entity_prop);
+    if(prop) {
+        // Retrieve the property from the schema of the base entity (not this entity,
+        // which is just a PROPERTY_OPERATOR)
+        AR_ExpNode *base_entity = NEWAST_GetEntity(ast, id);
+        cypher_astnode_type_t type = cypher_astnode_type(base_entity->operand.variadic.ast_ref);
+        if (type == CYPHER_AST_NODE_PATTERN) {
+            node->operand.variadic.entity_prop_idx = Attribute_GetID(SCHEMA_NODE, prop);
+        } else { // (type == CYPHER_AST_REL_PATTERN)
+            node->operand.variadic.entity_prop_idx = Attribute_GetID(SCHEMA_EDGE, prop);
+        }
     }
     return node;
 }
@@ -119,7 +123,7 @@ AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *exp
     } else if (type == CYPHER_AST_IDENTIFIER) {
         // Identifier referencing another AST entity
         const char *alias = cypher_ast_identifier_get_name(expr);
-        return AR_EXP_NewVariableOperandNode(ast, alias, NULL);
+        return AR_EXP_NewVariableOperandNode(ast, expr, alias, NULL);
 
     /* Entity-property pair */
     } else if (type == CYPHER_AST_PROPERTY_OPERATOR) {
@@ -132,7 +136,7 @@ AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *exp
         // Extract the property name
         const cypher_astnode_t *prop_name_node = cypher_ast_property_operator_get_prop_name(expr);
         const char *prop_name = cypher_ast_prop_name_get_value(prop_name_node);
-        return AR_EXP_NewVariableOperandNode(ast, alias, prop_name);
+        return AR_EXP_NewVariableOperandNode(ast, expr, alias, prop_name);
 
     /* SIValue constant types */
     } else if (type == CYPHER_AST_INTEGER) {
