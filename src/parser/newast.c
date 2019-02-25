@@ -253,6 +253,11 @@ AR_ExpNode* NEWAST_GetEntity(const NEWAST *ast, unsigned int id) {
     return ast->defined_entities[id];
 }
 
+size_t NEWAST_AliasCount(const NEWAST *ast) {
+    assert(ast);
+    return ast->identifier_map->cardinality;
+}
+
 NEWAST* NEWAST_GetFromLTS(void) {
     NEWAST *ast = pthread_getspecific(_tlsNEWASTKey);
     assert(ast);

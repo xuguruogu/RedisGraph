@@ -304,7 +304,7 @@ void ExpandCollapsedNodes(NEWAST *ast) {
 
             AR_ExpNode *expanded_exp;
             ReturnElementNode *retElem;
-            if(Schema_AttributeCount(schema) == 0) {
+            if(!schema || Schema_AttributeCount(schema) == 0) {
                 /* Schema missing or
                  * label doesn't have any properties.
                  * Create a fake return element. */
@@ -515,6 +515,7 @@ void _BuildReturnExpressions(NEWAST *ast) {
     }
 }
 
+// TODO
 // TODO maybe put in resultset.c? _buildExpressions repetition from project and aggregate
 /*
 void _prepareResultset(NEWAST *ast) {

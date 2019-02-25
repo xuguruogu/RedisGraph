@@ -157,8 +157,9 @@ static Column* _NewColumn(char *name, char *alias) {
 void static _Column_Free(Column* column) {
     /* No need to free alias,
      * it will be freed as part of AST_Free. */
-    rm_free(column->name);
-    rm_free(column);
+    // TODO
+    // rm_free(column->name);
+    // rm_free(column);
 }
 
 void ResultSet_CreateHeader(ResultSet *resultset) {
@@ -179,16 +180,14 @@ void ResultSet_CreateHeader(ResultSet *resultset) {
         // AST_Entity *elem = ast->return_expressions[i];
         ReturnElementNode *elem = ast->return_expressions[i];
 
-        // TODO this seems really pointless
+        // TODO ?? this seems really pointless
         char *column_name;
-        AR_EXP_ToString(elem->exp, &column_name);
-        char *alias;
         if (elem->alias) {
-            alias = (char*)elem->alias;
+            column_name = (char*)elem->alias;
         } else {
-            alias = column_name;
+            AR_EXP_ToString(elem->exp, &column_name);
         }
-        Column* column = _NewColumn(column_name, alias);
+        Column* column = _NewColumn(column_name, column_name);
 
         header->columns[i] = column;
     }

@@ -6,14 +6,14 @@
 */
 
 #include "op_cartesian_product.h"
-#include "../../parser/ast.h"
+#include "../../parser/newast.h"
 
 OpBase* NewCartesianProductOp() {
     CartesianProduct *cp = malloc(sizeof(CartesianProduct));
     cp->init = true;
 
-    AST *ast = AST_GetFromLTS();
-    cp->r = Record_New(AST_AliasCount(ast));
+    NEWAST *ast = NEWAST_GetFromLTS();
+    cp->r = Record_New(NEWAST_AliasCount(ast));
 
     // Set our Op operations
     OpBase_Init(&cp->op);

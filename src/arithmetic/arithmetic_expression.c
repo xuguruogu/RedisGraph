@@ -171,11 +171,30 @@ AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *exp
     // TODO Possibly implement these, replacing AST_Filter types
     } else if (type == CYPHER_AST_UNARY_OPERATOR) {
         // unary
+        printf("\ngot unary\n");
     } else if (type == CYPHER_AST_BINARY_OPERATOR) {
         // binary comparison
+        // TODO handle here?
+        // CYPHER_OP_OR;
+        // CYPHER_OP_XOR;
+        // CYPHER_OP_AND;
+        // CYPHER_OP_EQUAL;
+        // CYPHER_OP_NEQUAL;
+        // CYPHER_OP_LT;
+        // CYPHER_OP_GT;
+        // CYPHER_OP_LTE;
+        // CYPHER_OP_GTE;
+        // CYPHER_OP_PLUS;
+        // CYPHER_OP_MINUS;
+        // CYPHER_OP_MULT;
+        // CYPHER_OP_DIV;
+        // CYPHER_OP_MOD;
+        // CYPHER_OP_POW;
+        // More, STARTS_WITH and stuff?
     } else if (type == CYPHER_AST_COMPARISON) {
         // generic comparison
 
+        printf("\ngot binary\n");
 
     } else {
     /*

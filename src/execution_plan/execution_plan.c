@@ -235,11 +235,10 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
     QueryGraph *q = QueryGraph_New(node_count, edge_count);
     execution_plan->query_graph = q;
 
+    NEWAST *new_ast = NEWAST_GetFromLTS();
     FT_FilterNode *filter_tree = NULL;
-    if(ast->whereNode != NULL) {
-        filter_tree = BuildFiltersTree(ast, ast->whereNode->filters);
-        execution_plan->filter_tree = filter_tree;
-    }
+    filter_tree = BuildFiltersTree(new_ast);
+    execution_plan->filter_tree = filter_tree;
 
     if(ast->matchNode) {
         BuildQueryGraph(gc, q, ast->matchNode->_mergedPatterns);
@@ -421,6 +420,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
     if(ast->whereNode != NULL) {
         Vector *sub_trees = FilterTree_SubTrees(execution_plan->filter_tree);
 
+        // TODO reintroduce something *like* this, if not exactly this
         /* For each filter tree find the earliest position along the execution 
          * after which the filter tree can be applied. */
         for(int i = 0; i < Vector_Size(sub_trees); i++) {
@@ -447,6 +447,32 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
         }
         Vector_Free(sub_trees);
     }
+        // for(int i = 0; i < Vector_Size(sub_trees); i++) {
+            // FT_FilterNode *tree;
+            // Vector_Get(sub_trees, i, &tree);
+
+            // Vector *references = FilterTree_CollectAliases(tree);
+            // Vector *references = FilterTree_CollectAliases(filter_tree);
+
+            /* Scan execution plan, locate the earliest position where all 
+             * references been resolved. */
+            // OpBase *op = ExecutionPlan_Locate_References(execution_plan->root, references);
+            // assert(op);
+
+            /* Create filter node.
+             * Introduce filter op right below located op. */
+            // // OpBase *filter_op = NewFilterOp(tree);
+            // OpBase *filter_op = NewFilterOp(filter_tree);
+            // _OpBase_PushBelow(op, filter_op);
+            // for(int j = 0; j < Vector_Size(references); j++) {
+                // char *ref;
+                // Vector_Get(references, j, &ref);
+                // free(ref);
+            // }
+            // Vector_Free(references);
+        // }
+        // Vector_Free(sub_trees);
+    // }
     
     Vector_Free(ops);
     optimizePlan(gc, execution_plan);

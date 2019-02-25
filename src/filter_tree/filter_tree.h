@@ -47,9 +47,11 @@ struct FT_FilterNode {
 
 typedef struct FT_FilterNode FT_FilterNode;
 
+FT_FilterNode* FilterNode_FromAST(const NEWAST *ast, const cypher_astnode_t *expr);
+
 /* Given AST's WHERE subtree constructs a filter tree
  * This is done to speed up the filtering process. */
-FT_FilterNode* BuildFiltersTree(const AST *ast, const AST_FilterNode *root);
+FT_FilterNode* BuildFiltersTree(const NEWAST *ast);
 
 int IsNodePredicate(const FT_FilterNode *node);
 

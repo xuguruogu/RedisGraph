@@ -72,6 +72,8 @@ unsigned int NEWAST_GetAliasID(const NEWAST *ast, char *alias);
 
 AR_ExpNode* NEWAST_GetEntity(const NEWAST *ast, unsigned int id);
 
+size_t NEWAST_AliasCount(const NEWAST *ast);
+
 NEWAST* NEWAST_GetFromLTS(void);
 
 #endif
