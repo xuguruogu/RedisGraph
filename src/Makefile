@@ -46,6 +46,8 @@ CC_SOURCES += $(wildcard $(SOURCEDIR)/index/*.c)
 CC_SOURCES += $(wildcard $(SOURCEDIR)/parser/clauses/*.c)
 CC_SOURCES += $(SOURCEDIR)/parser/ast.c
 CC_SOURCES += $(SOURCEDIR)/parser/newast.c
+CC_SOURCES += $(SOURCEDIR)/parser/newast_validations.c
+CC_SOURCES += $(SOURCEDIR)/parser/newast_filter_tree.c
 CC_SOURCES += $(SOURCEDIR)/parser/ast_common.c
 CC_SOURCES += $(SOURCEDIR)/parser/ast_arithmetic_expression.c
 CC_SOURCES += $(SOURCEDIR)/parser/lex.yy.c
@@ -136,7 +138,7 @@ package: redisgraph.so
 	mkdir -p ../build
 	ramp pack -m "`pwd`/../ramp_manifest.yml" -v -o "../build/redisgraph.{os}-{architecture}.latest.zip" "`pwd`/redisgraph.so"
 
-test: redisgraph.so
+test:
 	# unit tests
 	$(MAKE) -C ../tests test
 

@@ -9,6 +9,7 @@
 #include "../value.h"
 #include "filter_tree.h"
 #include "../parser/grammar.h"
+#include "../parser/newast_filter_tree.h"
 #include "../query_executor.h"
 #include "../util/vector.h"
 
@@ -81,6 +82,9 @@ Vector* FilterTree_SubTrees(const FT_FilterNode *root) {
 }
 
 FT_FilterNode* BuildFiltersTree(const AST *ast, const AST_FilterNode *root) {
+    NEWAST *new_ast = NEWAST_GetFromLTS();
+    TMP_FT_FilterNode *new_tree = NEW_BuildFiltersTree(new_ast);
+
     FT_FilterNode *filterNode;
 
     if(root->t == N_PRED) {
