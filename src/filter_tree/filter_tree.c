@@ -198,7 +198,6 @@ FT_FilterNode* _convertComparison(const NEWAST *ast, const cypher_astnode_t *com
     return _CreatePredicateFilterNode(op, lhs, rhs);
 }
 
-// void _convertInlinedProperties(const NEWAST *ast, const char *alias, const cypher_astnode_t *map) {
 FT_FilterNode* _convertInlinedProperties(const NEWAST *ast, const cypher_astnode_t *entity, int type) {
     const cypher_astnode_t *props = NULL;
     const cypher_astnode_t *alias_node = NULL;
@@ -212,8 +211,16 @@ FT_FilterNode* _convertInlinedProperties(const NEWAST *ast, const cypher_astnode
     }
 
     if (!props) return NULL;
-    assert(alias_node); // TODO valid?
-    const char *alias = cypher_ast_identifier_get_name(alias_node);
+
+    const char *alias = NULL;
+    if (alias_node) {
+        alias = cypher_ast_identifier_get_name(alias_node);
+    } else {
+        // Retrieve alias of anonymous entity
+        AR_ExpNode *exp = NEWAST_SeekEntity(ast, entity);
+        if (exp) alias = exp->operand.variadic.entity_alias;
+    }
+    assert(alias);
 
     FT_FilterNode *root = NULL;
     unsigned int nelems = cypher_ast_map_nentries(props);

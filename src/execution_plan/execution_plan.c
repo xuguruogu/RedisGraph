@@ -219,10 +219,10 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
                                 AST *ast,
                                 bool explain) {
 
+    NEWAST *new_ast = NEWAST_GetFromLTS();
     Graph *g = gc->g;
     ExecutionPlan *execution_plan = (ExecutionPlan*)calloc(1, sizeof(ExecutionPlan));    
-    execution_plan->result_set = (explain) ? NULL: NewResultSet(ast, ctx);
-    execution_plan->filter_tree = NULL;
+    execution_plan->result_set = (explain) ? NULL: NewResultSet(new_ast, ctx);
     Vector *ops = NewVector(OpBase*, 1);
     OpBase *op;
 
@@ -235,9 +235,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
     QueryGraph *q = QueryGraph_New(node_count, edge_count);
     execution_plan->query_graph = q;
 
-    NEWAST *new_ast = NEWAST_GetFromLTS();
-    FT_FilterNode *filter_tree = NULL;
-    filter_tree = BuildFiltersTree(new_ast);
+    FT_FilterNode *filter_tree = BuildFiltersTree(new_ast);
     execution_plan->filter_tree = filter_tree;
 
     if(ast->matchNode) {
@@ -417,7 +415,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx,
         parent_op = child_op;
     }
 
-    if(ast->whereNode != NULL) {
+    if (filter_tree != NULL) {
         Vector *sub_trees = FilterTree_SubTrees(execution_plan->filter_tree);
 
         // TODO reintroduce something *like* this, if not exactly this

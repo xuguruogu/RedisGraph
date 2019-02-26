@@ -229,6 +229,14 @@ void _walkTriemap(TrieMap *tm) {
     TrieMapIterator_Free(it);
 }
 
+// TODO I find it so weird that this is necessary
+long NEWAST_ParseIntegerNode(const cypher_astnode_t *int_node) {
+    assert(int_node);
+
+    const char *value_str = cypher_ast_integer_get_valuestr(int_node);
+    return strtol(value_str, NULL, 0);
+}
+
 void NEWAST_BuildAliasMap(NEWAST *ast) {
     ast->identifier_map = NewTrieMap(); // Holds mapping between referred entities and IDs.
     ast->defined_entities = array_new(cypher_astnode_t*, 1);
@@ -251,6 +259,16 @@ unsigned int NEWAST_GetAliasID(const NEWAST *ast, char *alias) {
 
 AR_ExpNode* NEWAST_GetEntity(const NEWAST *ast, unsigned int id) {
     return ast->defined_entities[id];
+}
+
+// TODO preferable to not have this
+AR_ExpNode* NEWAST_SeekEntity(const NEWAST *ast, const cypher_astnode_t *entity) {
+    unsigned int len = array_len(ast->defined_entities);
+    for (unsigned int i = 0; i < len; i ++) {
+        AR_ExpNode *check_elem = ast->defined_entities[i];
+        if (check_elem->operand.variadic.ast_ref == entity) return ast->defined_entities[i];
+    }
+    return NULL;
 }
 
 size_t NEWAST_AliasCount(const NEWAST *ast) {

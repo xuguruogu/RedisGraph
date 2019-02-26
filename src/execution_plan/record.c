@@ -113,8 +113,8 @@ size_t Record_ToString(const Record r, char **buf, size_t *buf_cap) {
 }
 
 void Record_Free(Record r) {
-    int length = Record_length(r);
-    for(int i = 0; i < length; i++) {
+    unsigned int length = Record_length(r);
+    for(unsigned int i = 0; i < length; i++) {
         if(r[i].type == REC_TYPE_SCALAR) {
             SIValue_Free(&r[i].value.s);
         }

@@ -66,11 +66,15 @@ const cypher_astnode_t* NEWAST_GetBody(const cypher_parse_result_t *result);
 
 NEWAST* NEWAST_Build(cypher_parse_result_t *parse_result);
 
+long NEWAST_ParseIntegerNode(const cypher_astnode_t *int_node);
+
 void NEWAST_BuildAliasMap(NEWAST *ast);
 
 unsigned int NEWAST_GetAliasID(const NEWAST *ast, char *alias);
 
 AR_ExpNode* NEWAST_GetEntity(const NEWAST *ast, unsigned int id);
+
+AR_ExpNode* NEWAST_SeekEntity(const NEWAST *ast, const cypher_astnode_t *entity);
 
 size_t NEWAST_AliasCount(const NEWAST *ast);
 

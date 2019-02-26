@@ -12,6 +12,7 @@
 #include "../query_executor.h"
 #include "../grouping/group_cache.h"
 #include "../arithmetic/aggregate.h"
+#include "../parser/newast.h"
 
 /* Checks if we've already seen given records
  * Returns 1 if the string did not exist otherwise 0. */
@@ -66,7 +67,7 @@ static void _ResultSet_ReplyWithScalar(RedisModuleCtx *ctx, const SIValue v) {
       }
 }
 
-static void _ResultSet_ReplayHeader(const ResultSet *set, const ResultSetHeader *header) {    
+static void _ResultSet_ReplayHeader(const ResultSet *set, const ResultSetHeader *header) {
     RedisModule_ReplyWithArray(set->ctx, header->columns_len);
     for(int i = 0; i < header->columns_len; i++) {
         Column *c = header->columns[i];
@@ -177,7 +178,6 @@ void ResultSet_CreateHeader(ResultSet *resultset) {
     }
 
     for(int i = 0; i < header->columns_len; i++) {
-        // AST_Entity *elem = ast->return_expressions[i];
         ReturnElementNode *elem = ast->return_expressions[i];
 
         // TODO ?? this seems really pointless
@@ -218,18 +218,37 @@ bool ResultSet_Limited(const ResultSet* set) {
     return (set && set->limit != RESULTSET_UNLIMITED);
 }
 
-ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx) {
+// Set the DISTINCT, SKIP, and LIMIT values specified in the query
+void ResultSet_GetReturnModifiers(NEWAST *ast, ResultSet *set) {
+    const cypher_astnode_t *ret_clause = NEWAST_GetClause(ast->root, CYPHER_AST_RETURN);
+    if (!ret_clause) return;
+
+    set->distinct = (ret_clause && cypher_ast_return_is_distinct(ret_clause));
+
+    // Get user-specified number of rows to skip
+    const cypher_astnode_t *skip_clause = cypher_ast_return_get_skip(ret_clause);
+    if (skip_clause) set->skip = NEWAST_ParseIntegerNode(skip_clause);
+
+    // Get user-specified limit on number of returned rows
+    const cypher_astnode_t *limit_clause = cypher_ast_return_get_limit(ret_clause);
+    if(limit_clause) set->limit = set->skip + NEWAST_ParseIntegerNode(limit_clause);
+}
+
+ResultSet* NewResultSet(NEWAST* ast, RedisModuleCtx *ctx) {
     ResultSet* set = (ResultSet*)malloc(sizeof(ResultSet));
     set->ctx = ctx;
     set->trie = NULL;
     set->limit = RESULTSET_UNLIMITED;
-    set->skip = (ast->skipNode) ? ast->skipNode->skip : 0;
+    set->skip = 0;
     set->skipped = 0;
-    set->distinct = (ast->returnNode && ast->returnNode->distinct);
-    set->recordCount = 0;    
+    set->distinct = false;
+    set->recordCount = 0;
     set->header = NULL;
     set->bufferLen = 2048;
     set->buffer = malloc(set->bufferLen);
+    // Add skip, limit, and distinct values if specified by user
+    ResultSet_GetReturnModifiers(ast, set);
+    if(set->distinct) set->trie = NewTrieMap();
 
     set->stats.labels_added = 0;
     set->stats.nodes_created = 0;
@@ -238,10 +257,6 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx) {
     set->stats.nodes_deleted = 0;
     set->stats.relationships_deleted = 0;
 
-    // Account for skipped records.
-    if(ast->limitNode != NULL) set->limit = set->skip + ast->limitNode->limit;
-    if(set->distinct) set->trie = NewTrieMap();
-
     _ResultSet_SetupReply(set);
 
     return set;
@@ -249,7 +264,7 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx) {
 
 int ResultSet_AddRecord(ResultSet* set, Record r) {
     if(ResultSet_Full(set)) return RESULTSET_FULL;
-    
+
     /* TODO: Incase of an aggregated query, there's no need to distinct check
      * groups are already distinct by key.
      * TODO: indicate we've skipped record. */

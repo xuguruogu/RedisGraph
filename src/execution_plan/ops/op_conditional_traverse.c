@@ -68,13 +68,18 @@ void _traverse(CondTraverse *op) {
     GrB_Matrix_clear(op->F);
 }
 
-// Determin the maximum number of records
+// Determine the maximum number of records
 // which will be considered when evaluating an algebraic expression.
-static int _determinRecordCap(const NEWAST *UNUSEDast) {
-    // TODO update
-    AST *ast = AST_GetFromLTS();
+static int _determinRecordCap(const NEWAST *ast) {
     int recordsCap = 16;    // Default.
-    if(ast->limitNode) recordsCap = MIN(recordsCap, ast->limitNode->limit);
+    const cypher_astnode_t *ret_clause = NEWAST_GetClause(ast->root, CYPHER_AST_RETURN);
+    if (ret_clause == NULL) return recordsCap;
+    // TODO should just store this number somewhere, as this logic is also in resultset
+    const cypher_astnode_t *limit_clause = cypher_ast_return_get_limit(ret_clause);
+    if (limit_clause) {
+        int limit = NEWAST_ParseIntegerNode(limit_clause);
+        recordsCap = MIN(recordsCap, limit);
+    }
     return recordsCap;
 }
 
