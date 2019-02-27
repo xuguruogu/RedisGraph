@@ -153,6 +153,24 @@ AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant) {
     return node;
 }
 
+AR_ExpNode* AR_EXP_DuplicateAggFunc(const AR_ExpNode *expr) {
+    assert(expr->type == AR_EXP_OP && expr->op.type == AR_OP_AGGREGATE);
+    AR_ExpNode *clone = malloc(sizeof(AR_ExpNode));
+    clone->type = AR_EXP_OP;
+    clone->op.type = AR_OP_AGGREGATE;
+    char *func_name = expr->op.func_name;
+    clone->op.func_name = func_name;
+
+    AR_Func func = AR_GetFunc(func_name);
+    AggCtx* agg_func;
+    Agg_GetFunc(func_name, &agg_func);
+    clone->op.agg_func = agg_func;
+    clone->op.child_count = expr->op.child_count;
+    clone->op.children = expr->op.children; //  TODO sufficient?
+
+    return clone;
+}
+
 AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *expr) {
     const cypher_astnode_type_t type = cypher_astnode_type(expr);
 
