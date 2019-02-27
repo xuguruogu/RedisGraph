@@ -51,7 +51,7 @@ static AR_ExpNode** _build_aggregated_expressions(Aggregate *op) {
 
     for(uint i = 0; i < exp_count; i++) {
         if(!op->expression_classification[i]) continue;
-        AR_ExpNode *exp = op->ast->return_expressions[i]->exp;
+        AR_ExpNode *exp = AR_EXP_DuplicateAggFunc(op->ast->return_expressions[i]->exp);
         agg_exps = array_append(agg_exps, exp);
     }
 
