@@ -43,6 +43,57 @@ static AR_ExpNode* old_AR_EXP_NewVariableOperandNode(const AST *ast, const char 
     return node;
 }
 
+AR_Func _AR_GetFuncByOperator(AST_Operator op) {
+    switch(op) {
+        case OP_PLUS:
+            return AR_ADD;
+        case OP_MINUS:
+            return AR_SUB;
+        case OP_MULT:
+            return AR_MUL;
+        case OP_DIV:
+            return AR_DIV;
+        case OP_MOD: // TODO implement
+        case OP_POW: // TODO implement
+        // Includes operators like <, AND, etc
+        default:
+            assert(false);
+            return NULL;
+    }
+}
+
+static AR_ExpNode* _AR_EXP_NewOpNodeFromAST(AST_Operator op, int child_count) {
+    AR_ExpNode *node = calloc(1, sizeof(AR_ExpNode));
+    node->type = AR_EXP_OP;
+    node->op.func_name = NULL; // TODO needed?
+    node->op.child_count = child_count;
+    node->op.children = (AR_ExpNode **)malloc(child_count * sizeof(AR_ExpNode*));
+
+    /* Determine function type. */
+    AR_Func func = _AR_GetFuncByOperator(op);
+    if(func != NULL) {
+        node->op.f = func;
+        node->op.type = AR_OP_FUNC;
+    } else {
+        /* Either this is an aggregation function
+         * or the requested function does not exists. */
+        // TODO handle
+        assert(false);
+        AggCtx* agg_func;
+        // Agg_GetFunc(func_name, &agg_func);
+
+        /* TODO: handle Unknown function. */
+        assert(agg_func != NULL);
+        node->op.agg_func = agg_func;
+        node->op.type = AR_OP_AGGREGATE;
+    }
+
+    return node;
+
+}
+
+// TODO we don't really have as many func_name strings as before (they were generated in grammar.y)
+// maybe replace with above
 static AR_ExpNode* _AR_EXP_NewOpNode(char *func_name, int child_count) {
     AR_ExpNode *node = calloc(1, sizeof(AR_ExpNode));
     node->type = AR_EXP_OP;
@@ -115,6 +166,7 @@ AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *exp
         AR_ExpNode *op = _AR_EXP_NewOpNode((char*)func_name, arg_count);
         for (unsigned int i = 0; i < arg_count; i ++) {
             const cypher_astnode_t *arg = cypher_ast_apply_operator_get_argument(expr, i);
+            // Recursively convert arguments
             op->op.children[i] = AR_EXP_FromExpression(ast, arg);
         }
         return op;
@@ -172,7 +224,18 @@ AR_ExpNode* AR_EXP_FromExpression(const NEWAST *ast, const cypher_astnode_t *exp
     } else if (type == CYPHER_AST_UNARY_OPERATOR) {
         // unary
         printf("\ngot unary\n");
+        assert(false);
     } else if (type == CYPHER_AST_BINARY_OPERATOR) {
+        const cypher_operator_t *operator = cypher_ast_binary_operator_get_operator(expr);
+        AST_Operator operator_enum = NEWAST_ConvertOperatorNode(operator);
+        // Arguments are of type CYPHER_AST_EXPRESSION
+        AR_ExpNode *op = _AR_EXP_NewOpNodeFromAST(operator_enum, 2);
+        const cypher_astnode_t *lhs_node = cypher_ast_binary_operator_get_argument1(expr);
+        op->op.children[0] = AR_EXP_FromExpression(ast, lhs_node);
+        const cypher_astnode_t *rhs_node = cypher_ast_binary_operator_get_argument2(expr);
+        op->op.children[1] = AR_EXP_FromExpression(ast, rhs_node);
+        return op;
+
         // binary comparison
         // TODO handle here?
         // CYPHER_OP_OR;

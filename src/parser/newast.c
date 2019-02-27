@@ -237,6 +237,46 @@ long NEWAST_ParseIntegerNode(const cypher_astnode_t *int_node) {
     return strtol(value_str, NULL, 0);
 }
 
+AST_Operator NEWAST_ConvertOperatorNode(const cypher_operator_t *op) {
+    // TODO ordered by precedence, which I don't know if we're managing properly right now
+    if (op == CYPHER_OP_OR) {
+        return OP_OR;
+    } else if (op == CYPHER_OP_XOR) {
+        // TODO implement
+        assert(false);
+    } else if (op == CYPHER_OP_AND) {
+        return OP_AND;
+    } else if (op == CYPHER_OP_NOT) {
+        return OP_NOT;
+    } else if (op == CYPHER_OP_EQUAL) {
+        return OP_EQUAL;
+    } else if (op == CYPHER_OP_NEQUAL) {
+        return OP_NEQUAL;
+    } else if (op == CYPHER_OP_LT) {
+        return OP_LT;
+    } else if (op == CYPHER_OP_GT) {
+        return OP_GT;
+    } else if (op == CYPHER_OP_LTE) {
+        return OP_LE;
+    } else if (op == CYPHER_OP_GTE) {
+        return OP_GE;
+    } else if (op == CYPHER_OP_PLUS) {
+        return OP_PLUS;
+    } else if (op == CYPHER_OP_MINUS) {
+        return OP_MINUS;
+    } else if (op == CYPHER_OP_MULT) {
+        return OP_MULT;
+    } else if (op == CYPHER_OP_DIV) {
+        return OP_DIV;
+    } else if (op == CYPHER_OP_MOD) {
+        return OP_MOD;
+    } else if (op == CYPHER_OP_POW) {
+        return OP_POW;
+    }
+
+    return -1;
+}
+
 void NEWAST_BuildAliasMap(NEWAST *ast) {
     ast->identifier_map = NewTrieMap(); // Holds mapping between referred entities and IDs.
     ast->defined_entities = array_new(cypher_astnode_t*, 1);

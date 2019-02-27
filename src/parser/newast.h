@@ -19,6 +19,25 @@ typedef enum {
 	AST_INVALID
 } AST_Validation;
 
+typedef enum {
+    OP_NULL,
+    OP_OR,
+    OP_AND,
+    OP_NOT,
+    OP_EQUAL,
+    OP_NEQUAL,
+    OP_LT,
+    OP_GT,
+    OP_LE,
+    OP_GE,
+    OP_PLUS,
+    OP_MINUS,
+    OP_MULT,
+    OP_DIV,
+    OP_MOD,
+    OP_POW
+} AST_Operator;
+
 typedef struct AR_ExpNode AR_ExpNode;
 
 typedef struct {
@@ -67,6 +86,8 @@ const cypher_astnode_t* NEWAST_GetBody(const cypher_parse_result_t *result);
 NEWAST* NEWAST_Build(cypher_parse_result_t *parse_result);
 
 long NEWAST_ParseIntegerNode(const cypher_astnode_t *int_node);
+
+AST_Operator NEWAST_ConvertOperatorNode(const cypher_operator_t *op);
 
 void NEWAST_BuildAliasMap(NEWAST *ast);
 

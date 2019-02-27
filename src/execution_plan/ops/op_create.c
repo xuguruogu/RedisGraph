@@ -13,6 +13,7 @@
 #include <assert.h>
 
 void _SetModifiedEntities(OpCreate *op) {
+    // TODO
     AST *ast = AST_GetFromLTS();
     /* Determin which entities are modified by create op. */
     size_t create_entity_count = Vector_Size(op->ast->createNode->graphEntities);
