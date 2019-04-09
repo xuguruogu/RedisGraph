@@ -32,7 +32,7 @@ int MGraph_Explain(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     /* Parse query, get AST. */
     char *errMsg = NULL;
-    AST* ast = NULL;
+    AST **ast = NULL;
     GraphContext *gc = NULL;
     ExecutionPlan *plan = NULL;
 

@@ -79,10 +79,13 @@ static void _Column_Free(Column* column) {
     // rm_free(column);
 }
 
-static void _ResultSet_CreateHeader(ResultSet *set, AST **ast) {
-    AST *final_ast = ast[array_len(ast)-1];
+void ResultSet_CreateHeader(ResultSet *resultset) {
+    assert(resultset->header == NULL && resultset->recordCount == 0);
 
-    const NEWAST *ast = NEWAST_GetFromLTS();
+    const NEWAST *ast = NEWAST_GetFromTLS();
+    const cypher_astnode_t *ret_clause = NEWAST_GetClause(ast->root, CYPHER_AST_RETURN);
+    if (ret_clause == NULL) return;
+
     ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
 
     unsigned int return_expression_count = array_len(ast->return_expressions);
@@ -133,7 +136,7 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
     ResultSet* set = (ResultSet*)malloc(sizeof(ResultSet));
     set->ctx = ctx;
     set->gc = GraphContext_GetFromTLS();
-    set->distinct = (ast->returnNode && ast->returnNode->distinct);
+    set->distinct = false;
     set->compact = compact;
     set->EmitRecord = _ResultSet_SetReplyFormatter(set->compact);
     set->recordCount = 0;    
@@ -142,7 +145,6 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
     set->buffer = malloc(set->bufferLen);
     // Add skip, limit, and distinct values if specified by user
     ResultSet_GetReturnModifiers(ast, set);
-    if(set->distinct) set->trie = NewTrieMap();
 
     set->stats.labels_added = 0;
     set->stats.nodes_created = 0;

@@ -41,7 +41,7 @@ AST* AST_New(AST_MatchNode *matchNode, AST_WhereNode *whereNode,
 						 AST_ProcedureCallNode *callNode);
 
 // Retrieve AST from thread local storage.
-AST *AST_GetFromLTS();
+AST** AST_GetFromTLS();
 
 // Returns number of aliases defined in AST.
 int AST_AliasCount(const AST *ast);

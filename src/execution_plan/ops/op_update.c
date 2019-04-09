@@ -159,9 +159,11 @@ static Record _handoff(OpUpdate* op) {
     return NULL;
 }
 
-OpBase* NewUpdateOp(AST *ast, ResultSet *result_set) {
+OpBase* NewUpdateOp(GraphContext *gc, ResultSet *result_set) {
     OpUpdate* op_update = calloc(1, sizeof(OpUpdate));
-    op_update->gc = GraphContext_GetFromTLS();
+    op_update->gc = gc;
+    assert(false);
+    AST *ast = AST_GetFromTLS()[0]; // TODO replace
     op_update->ast = ast;
     op_update->result_set = result_set;
 
