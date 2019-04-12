@@ -30,6 +30,7 @@ static inline void _ResultSet_ReplyWithRoundedDouble(RedisModuleCtx *ctx, double
  * This protocol has unique support for strings, 8-byte integers, and NULL values. */
 static void _ResultSet_ReplyWithScalar(RedisModuleCtx *ctx, const SIValue v) {
     // Emit the actual value, then the value type (to facilitate client-side parsing)
+    SIValue *arr;
     switch (SI_TYPE(v)) {
         case T_STRING:
         case T_CONSTSTRING:
@@ -45,9 +46,17 @@ static void _ResultSet_ReplyWithScalar(RedisModuleCtx *ctx, const SIValue v) {
             if (v.longval != 0) RedisModule_ReplyWithStringBuffer(ctx, "true", 4);
             else RedisModule_ReplyWithStringBuffer(ctx, "false", 5);
             return;
+        case T_ARRAY:
+            arr = v.ptrval;
+            int item_count = array_len(arr);
+            RedisModule_ReplyWithArray(ctx, item_count);
+            for(int i = 0; i < item_count; i++) {
+                _ResultSet_ReplyWithScalar(ctx, arr[i]);
+            }
+            return;
         case T_NULL:
             RedisModule_ReplyWithNull(ctx);
-            return;
+            return;    
         default:
             assert("Unhandled value type" && false);
       }
