@@ -7,13 +7,13 @@
 #include "./optimizer.h"
 #include "./optimizations.h"
 
-void optimizePlan(ExecutionPlan *plan, AST *ast) {
+void optimizePlan(GraphContext *gc, ExecutionPlan *plan) {
     // Try to reduce SCAN + FILTER to a node seek operation.
-    seekByID(plan, ast);
+    seekByID(plan);
 
     /* When possible, replace label scan and filter ops
      * with index scans. */
-    utilizeIndices(plan, ast);
+    utilizeIndices(gc, plan);
 
     /* Remove redundant SCAN operations. */
     reduceScans(plan);
@@ -28,5 +28,5 @@ void optimizePlan(ExecutionPlan *plan, AST *ast) {
     reduceDistinct(plan);
 
     /* Try to reduce execution plan incase it perform node counting. */
-    reduceCount(plan, ast);
+    reduceCount(plan);
 }

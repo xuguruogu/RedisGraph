@@ -54,9 +54,7 @@ void _locateScanOp(OpBase *root, NodeByLabelScan ***scanOps) {
   }
 }
 
-void utilizeIndices(ExecutionPlan *plan, AST *ast) {
-  GraphContext *gc = GraphContext_GetFromTLS();
-
+void utilizeIndices(GraphContext *gc, ExecutionPlan *plan) {
   // Return immediately if the graph has no indices
   if (!GraphContext_HasIndices(gc)) return;
 
@@ -144,7 +142,7 @@ void utilizeIndices(ExecutionPlan *plan, AST *ast) {
     }
 
     if (iter != NULL) {
-      OpBase *indexOp = NewIndexScanOp(scanOp->g, scanOp->node, iter, ast);
+      OpBase *indexOp = NewIndexScanOp(scanOp->g, scanOp->node, iter);
       ExecutionPlan_ReplaceOp(plan, (OpBase*)scanOp, indexOp);
     }
   }

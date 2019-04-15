@@ -18,7 +18,6 @@ typedef struct {
     AST_GraphEntity *ge;            /* Referred entity in MATCH clause. */
     const char *attribute;          /* Attribute name to update. */
     Attribute_ID attribute_idx;     /* Attribute internal ID. */
->>>>>>> Fix SET and DELETE ops
     int entityRecIdx;               /* Position of entity within record. */
     AR_ExpNode *exp;                /* Expression to evaluate. */
 } EntityUpdateEvalCtx;
