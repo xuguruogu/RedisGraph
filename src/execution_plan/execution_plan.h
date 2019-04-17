@@ -8,7 +8,6 @@
 #define __EXECUTION_PLAN_H__
 
 #include "./ops/op.h"
-#include "../parser/ast.h"
 #include "../graph/graph.h"
 #include "../resultset/resultset.h"
 #include "../filter_tree/filter_tree.h"
@@ -32,8 +31,7 @@ typedef struct {
 /* Creates a new execution plan from AST */
 ExecutionPlan* NewExecutionPlan (
     RedisModuleCtx *ctx,    // Module-level context
-    AST **ast,              // Query parsed AST
-    ResultSet *result_set,  // Result set to be populated if the query returns data
+    GraphContext *gc,       // Graph access and schemas
     bool explain            // Construct execution plan, do not execute
 );
 
