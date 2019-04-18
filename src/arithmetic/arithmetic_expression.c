@@ -143,7 +143,6 @@ AR_ExpNode* AR_EXP_DuplicateAggFunc(const AR_ExpNode *expr) {
     char *func_name = expr->op.func_name;
     clone->op.func_name = func_name;
 
-    AR_Func func = AR_GetFunc(func_name);
     AggCtx* agg_func;
     Agg_GetFunc(func_name, &agg_func);
     clone->op.agg_func = agg_func;
@@ -580,7 +579,6 @@ SIValue AR_ADD(SIValue *argv, int argc) {
     SIValue result = argv[0];
     char buffer[512];
     char *string_arg = NULL;
-    double numeric_arg;
 
     if(SIValue_IsNull(argv[0])) return SI_NullVal();
     for(int i = 1; i < argc; i++) {
@@ -926,7 +924,6 @@ SIValue AR_TYPE(SIValue *argv, int argc) {
     char *type = "";
     Edge *e = argv[0].ptrval;
     GraphContext *gc = GraphContext_GetFromTLS();
-    Graph *g = gc->g;
     int id = Graph_GetEdgeRelation(gc->g, e);
     if(id != GRAPH_NO_RELATION) type = gc->relation_schemas[id]->name;
     return SI_ConstStringVal(type);

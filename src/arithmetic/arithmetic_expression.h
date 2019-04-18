@@ -107,10 +107,6 @@ typedef struct {
         } variadic;
     };
 	AR_OperandNodeType type;
-            const cypher_astnode_t *ast_ref;
-        } variadic;
-    };
-    AR_OperandNodeType type;
 } AR_OperandNode;
 
 /* AR_ExpNode a node within an arithmetic expression tree, 

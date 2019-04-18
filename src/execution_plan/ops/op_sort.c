@@ -179,7 +179,6 @@ Record SortConsume(OpBase *opBase) {
         QSORT(Record, op->buffer, array_len(op->buffer), RECORD_SORT);
     } else {
         // Heap, responses need to be reversed.
-        int record_idx = 0;
         int records_count = heap_count(op->heap);
         op->buffer = array_new(Record, records_count);
 
