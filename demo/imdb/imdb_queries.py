@@ -337,6 +337,6 @@ class IMDBQueries(object):
             self.find_titles_starting_with_american_query
             # self.all_actors_named_tim
         ]
-    
+
     def queries(self):
         return self.queries_info
