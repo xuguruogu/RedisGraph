@@ -7,7 +7,7 @@
 #include "op_node_by_label_scan.h"
 #include "../../parser/newast.h"
 
-OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node) {
+OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node, unsigned int node_idx) {
     NodeByLabelScan *nodeByLabelScan = malloc(sizeof(NodeByLabelScan));
     GraphContext *gc = GraphContext_GetFromTLS();
     nodeByLabelScan->g = gc->g;
@@ -15,8 +15,8 @@ OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node) {
     nodeByLabelScan->_zero_matrix = NULL;
 
     NEWAST *ast = NEWAST_GetFromTLS();
-    nodeByLabelScan->nodeRecIdx = NEWAST_GetAliasID(ast, node->alias);
-    nodeByLabelScan->recLength = NEWAST_AliasCount(ast); // TODO insufficient after expanding entities
+    nodeByLabelScan->nodeRecIdx = node_idx;
+    nodeByLabelScan->recLength = NEWAST_AliasCount(ast);
 
     /* Find out label matrix ID. */
     Schema *schema = GraphContext_GetSchema(gc, node->label, SCHEMA_NODE);
