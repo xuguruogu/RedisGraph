@@ -11,7 +11,7 @@
 #include "../query_executor.h"
 #include "../grouping/group_cache.h"
 #include "../arithmetic/aggregate.h"
-#include "../parser/newast.h"
+#include "../parser/ast.h"
 
 // Choose the appropriate reply formatter
 EmitRecordFunc _ResultSet_SetReplyFormatter(bool compact) {
@@ -82,8 +82,8 @@ static void _Column_Free(Column* column) {
 void ResultSet_CreateHeader(ResultSet *resultset) {
     assert(resultset->header == NULL && resultset->recordCount == 0);
 
-    const NEWAST *ast = NEWAST_GetFromTLS();
-    const cypher_astnode_t *ret_clause = NEWAST_GetClause(ast->root, CYPHER_AST_RETURN);
+    const AST *ast = AST_GetFromTLS();
+    const cypher_astnode_t *ret_clause = AST_GetClause(ast->root, CYPHER_AST_RETURN);
     if (ret_clause == NULL) return;
 
     ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
@@ -130,6 +130,24 @@ static void _ResultSetHeader_Free(ResultSetHeader* header) {
     }
 
     rm_free(header);
+}
+
+// Set the DISTINCT, SKIP, and LIMIT values specified in the query
+void ResultSet_GetReturnModifiers(AST *ast, ResultSet *set) {
+    const cypher_astnode_t *ret_clause = AST_GetClause(ast->root, CYPHER_AST_RETURN);
+    if (!ret_clause) return;
+
+    set->distinct = (ret_clause && cypher_ast_return_is_distinct(ret_clause));
+
+    /*
+    // Get user-specified number of rows to skip
+    const cypher_astnode_t *skip_clause = cypher_ast_return_get_skip(ret_clause);
+    if (skip_clause) set->skip = AST_ParseIntegerNode(skip_clause);
+
+    // Get user-specified limit on number of returned rows
+    const cypher_astnode_t *limit_clause = cypher_ast_return_get_limit(ret_clause);
+    if(limit_clause) set->limit = set->skip + AST_ParseIntegerNode(limit_clause);
+    */
 }
 
 ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {

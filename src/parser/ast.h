@@ -1,71 +1,128 @@
 /*
-* Copyright 2018-2019 Redis Labs Ltd. and Contributors
-*
-* This file is available under the Redis Labs Source Available License Agreement
-*/
+ * Copyright 2018-2019 Redis Labs Ltd. and Contributors
+ *
+ * This file is available under the Redis Labs Source Available License Agreement
+ */
 
-#ifndef AST_H
-#define AST_H
+#ifndef NEW_AST_H
+#define NEW_AST_H
 
-#include <stdbool.h>
+#include "../util/triemap/triemap.h"
 #include "../value.h"
-#include "./ast_common.h"
-#include "../redismodule.h"
-#include "../util/vector.h"
-#include "./clauses/clauses.h"
+#include "../../deps/libcypher-parser/lib/src/cypher-parser.h"
+
+typedef unsigned long long const AST_IDENTIFIER;
+
+#define NOT_IN_RECORD UINT_MAX
+
+// #define IDENTIFIER_NOT_FOUND UINT_MAX
+
+typedef enum {
+    AST_VALID,
+    AST_INVALID
+} AST_Validation;
+
+typedef enum {
+    OP_NULL,
+    OP_OR,
+    OP_AND,
+    OP_NOT,
+    OP_EQUAL,
+    OP_NEQUAL,
+    OP_LT,
+    OP_GT,
+    OP_LE,
+    OP_GE,
+    OP_PLUS,
+    OP_MINUS,
+    OP_MULT,
+    OP_DIV,
+    OP_MOD,
+    OP_POW
+} AST_Operator;
+
+typedef struct AR_ExpNode AR_ExpNode;
 
 typedef struct {
-	AST_MatchNode *matchNode;
-	AST_CreateNode *createNode;
-	AST_MergeNode *mergeNode;
-	AST_SetNode *setNode;
-	AST_DeleteNode *deleteNode;
-	AST_WhereNode *whereNode;
-	AST_ReturnNode *returnNode;
-	AST_OrderNode *orderNode;
-	AST_LimitNode *limitNode;
-	AST_SkipNode *skipNode;
-	AST_IndexNode *indexNode;
-	AST_UnwindNode *unwindNode;
-	AST_WithNode *withNode;
-	AST_ProcedureCallNode *callNode;
-	TrieMap *_aliasIDMapping;	// Mapping between aliases and IDs.
+    const char *alias;    // Alias given to this return element (using the AS keyword)
+    AR_ExpNode *exp;
+} ReturnElementNode; // TODO Should be able to remove this struct
+
+typedef struct {
+    const cypher_astnode_t *root;
+    // Extensible array of entities described in MATCH, MERGE, and CREATE clauses
+    AR_ExpNode **defined_entities;
+    TrieMap *entity_map;
+    ReturnElementNode **return_expressions;
+    unsigned int order_expression_count; // TODO maybe use arr.h instead
+    unsigned int record_length;
+    AR_ExpNode **order_expressions;
 } AST;
 
-AST* AST_New(AST_MatchNode *matchNode, AST_WhereNode *whereNode,
-						 AST_CreateNode *createNode, AST_MergeNode *mergeNode,
-						 AST_SetNode *setNode, AST_DeleteNode *deleteNode,
-						 AST_ReturnNode *returnNode, AST_OrderNode *orderNode,
-						 AST_SkipNode *skipNode, AST_LimitNode *limitNode,
-						 AST_IndexNode *indexNode, AST_UnwindNode *unwindNode,
-						 AST_ProcedureCallNode *callNode);
-
-// Retrieve AST from thread local storage.
-AST** AST_GetFromTLS();
-
-// Returns number of aliases defined in AST.
-int AST_AliasCount(const AST *ast);
-
-// Returns alias ID.
-int AST_GetAliasID(const AST *ast, char *alias);
-
-void AST_NameAnonymousNodes(AST *ast);
-
-void AST_MapAliasToID(AST *ast, AST_WithNode *prevWithClause);
-
-// Returns a triemap of all identifiers defined by ast.
-TrieMap* AST_Identifiers(const AST *ast);
-
-// Returns a triemap of AST_GraphEntity references from clauses that can specify nodes or edges.
-TrieMap* AST_CollectEntityReferences(AST **ast);
-
-/* Returns true if given ast describes projection 
- * i.e. contains RETURN, WITH clauses. */
-bool AST_Projects(const AST *ast);
+// AST clause validations.
+AST_Validation AST_Validate(const cypher_astnode_t *ast, char **reason);
 
 // Checks if AST represent a read only query.
-bool AST_ReadOnly(AST **ast);
+bool AST_ReadOnly(const cypher_astnode_t *query);
 
-void AST_Free(AST **ast);
+// Checks to see if AST contains specified clause. 
+bool AST_ContainsClause(const cypher_astnode_t *ast, cypher_astnode_type_t clause);
+
+// Checks to see if query contains any errors.
+bool AST_ContainsErrors(const cypher_parse_result_t *ast);
+
+// Report encountered errors.
+char* AST_ReportErrors(const cypher_parse_result_t *ast);
+
+// Returns all function (aggregated & none aggregated) mentioned in query.
+void AST_ReferredFunctions(const cypher_astnode_t *root, TrieMap *referred_funcs);
+
+// Checks if RETURN clause contains collapsed entities.
+int AST_ReturnClause_ContainsCollapsedNodes(const cypher_astnode_t *ast);
+
+// Returns specified clause or NULL.
+const cypher_astnode_t* AST_GetClause(const cypher_astnode_t *query, cypher_astnode_type_t clause_type);
+
+unsigned int AST_GetTopLevelClauses(const cypher_astnode_t *query, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches);
+
+const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result);
+
+AST* AST_Build(cypher_parse_result_t *parse_result);
+
+long AST_ParseIntegerNode(const cypher_astnode_t *int_node);
+
+AST_Operator AST_ConvertOperatorNode(const cypher_operator_t *op);
+
+bool AST_ClauseContainsAggregation(const cypher_astnode_t *clause);
+
+AR_ExpNode** AST_GetOrderExpressions(const cypher_astnode_t *order_clause);
+
+void AST_BuildAliasMap(AST *ast);
+
+unsigned int AST_GetAliasID(const AST *ast, char *alias);
+
+void AST_MapAlias(const AST *ast, char *alias, AR_ExpNode *exp);
+
+void AST_MapEntityHash(const AST *ast, AST_IDENTIFIER identifier, AR_ExpNode *exp);
+
+AR_ExpNode* AST_GetEntity(const AST *ast, const cypher_astnode_t *entity);
+
+AR_ExpNode* AST_GetEntityFromAlias(const AST *ast, char *alias);
+
+void AST_ConnectEntity(const AST *ast, const cypher_astnode_t *entity, AR_ExpNode *exp);
+
+AR_ExpNode* AST_GetEntityFromHash(const AST *ast, AST_IDENTIFIER id);
+
+AST_IDENTIFIER AST_EntityHash(const cypher_astnode_t *entity);
+
+unsigned int AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity);
+
+unsigned int AST_RecordLength(const AST *ast);
+
+unsigned int AST_AddRecordEntry(AST *ast);
+
+unsigned int AST_AddAnonymousRecordEntry(AST *ast);
+
+AST* AST_GetFromTLS(void);
 
 #endif

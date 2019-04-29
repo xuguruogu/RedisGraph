@@ -54,6 +54,8 @@ static void _CommitNodes(OpMerge *op, Record r) {
 
 
         // A CYPHER_AST_MAP node, a CYPHER_AST_PARAMETER node, or null
+        // _AddNodeProperties(op, schema, n, op->node_properties[i]);
+        // TODO Standardize this, but why is it so different from op create?
         const cypher_astnode_t *props = cypher_ast_node_pattern_get_properties(ast_node);
         if(props) {
             cypher_astnode_type_t prop_type = cypher_astnode_type(props);
@@ -161,7 +163,7 @@ OpBase* NewMergeOp(GraphContext *gc, const cypher_astnode_t *clause, ResultSet *
     OpMerge *op_merge = malloc(sizeof(OpMerge));
     GraphContext *gc = GraphContext_GetFromTLS();
     op_merge->gc = gc;
-    op_merge->ast = NEWAST_GetFromTLS();
+    op_merge->ast = AST_GetFromTLS();
     op_merge->clause = clause;
     op_merge->result_set = result_set;
     op_merge->matched = false;
@@ -198,7 +200,7 @@ Record OpMergeConsume(OpBase *opBase) {
         if(op->matched) return r;
 
         // No previous match, create MERGE pattern.
-        r = Record_New(NEWAST_RecordLength(op->ast));
+        r = Record_New(AST_RecordLength(op->ast));
         _CreateEntities(op, r);
         op->created = true;
     }

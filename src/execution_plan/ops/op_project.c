@@ -23,7 +23,7 @@ static AR_ExpNode** _getOrderExpressions(OpBase *op) {
 }
 
 OpBase* NewProjectOp(AR_ExpNode **exps, char **aliases) {
-    NEWAST *ast = NEWAST_GetFromTLS();
+    AST *ast = AST_GetFromTLS();
     OpProject *project = malloc(sizeof(OpProject));
     project->ast = ast;
     project->exps = exps;
@@ -102,7 +102,7 @@ Record ProjectConsume(OpBase *opBase) {
          * WITH 1 as one, one+one as two */
         // int alias_idx = NOT_IN_RECORD;
         // char *alias = (char*)op->ast->return_expressions[i]->alias;
-        // if (alias) alias_idx = NEWAST_GetAliasID(op->ast, alias);
+        // if (alias) alias_idx = AST_GetAliasID(op->ast, alias);
 
         // switch(SI_TYPE(v)) {
             // case T_NODE:
