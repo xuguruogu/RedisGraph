@@ -11,7 +11,6 @@
 #include "../query_executor.h"
 #include "../grouping/group_cache.h"
 #include "../arithmetic/aggregate.h"
-#include "../parser/ast.h"
 
 // Choose the appropriate reply formatter
 EmitRecordFunc _ResultSet_SetReplyFormatter(bool compact) {
@@ -79,23 +78,19 @@ static void _Column_Free(Column* column) {
     // rm_free(column);
 }
 
-void ResultSet_CreateHeader(ResultSet *resultset) {
+void ResultSet_CreateHeader(ResultSet *resultset, ReturnElementNode **return_expressions) {
     assert(resultset->header == NULL && resultset->recordCount == 0);
-
-    const AST *ast = AST_GetFromTLS();
-    const cypher_astnode_t *ret_clause = AST_GetClause(ast->root, CYPHER_AST_RETURN);
-    if (ret_clause == NULL) return;
 
     ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
 
-    unsigned int return_expression_count = array_len(ast->return_expressions);
+    unsigned int return_expression_count = array_len(return_expressions);
     if(return_expression_count > 0) {
         header->columns_len = return_expression_count;
         header->columns = rm_malloc(sizeof(Column*) * header->columns_len);
     }
 
     for(int i = 0; i < header->columns_len; i++) {
-        ReturnElementNode *elem = ast->return_expressions[i];
+        ReturnElementNode *elem = return_expressions[i];
 
         // TODO ?? this seems really pointless
         char *column_name;
@@ -161,8 +156,6 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
     set->header = NULL;
     set->bufferLen = 2048;
     set->buffer = malloc(set->bufferLen);
-    // Add skip, limit, and distinct values if specified by user
-    ResultSet_GetReturnModifiers(ast, set);
 
     set->stats.labels_added = 0;
     set->stats.nodes_created = 0;

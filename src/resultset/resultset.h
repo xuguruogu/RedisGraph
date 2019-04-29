@@ -24,7 +24,6 @@ typedef struct {
     RedisModuleCtx *ctx;
     GraphContext *gc;           /* Context used for mapping attribute strings and IDs */
     ResultSetHeader *header;    /* Describes how records should look like. */
-    bool distinct;              /* Whether or not each record is unique. */
     bool compact;               /* Whether records should be returned in compact form. */
     size_t recordCount;         /* Number of records introduced. */
     char *buffer;               /* Reusable buffer for record streaming. */
@@ -37,7 +36,7 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact);
 
 void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast);
 
-void ResultSet_CreateHeader(ResultSet *set);
+void ResultSet_CreateHeader(ResultSet *set, ReturnElementNode **return_expressions);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 
