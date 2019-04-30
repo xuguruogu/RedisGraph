@@ -63,68 +63,13 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-static Column* _NewColumn(char *name, char *alias) {
-    Column* column = rm_malloc(sizeof(Column));
-    column->name = name;
-    column->alias = alias;
-    return column;
-}
+void ResultSet_CreateHeader(ResultSet *resultset, const char **column_names) {
+    assert(resultset->recordCount == 0);
 
-static void _Column_Free(Column* column) {
-    /* No need to free alias,
-     * it will be freed as part of AST_Free. */
-    // TODO
-    // rm_free(column->name);
-    // rm_free(column);
-}
-
-void ResultSet_CreateHeader(ResultSet *resultset, ReturnElementNode **return_expressions) {
-    assert(resultset->header == NULL && resultset->recordCount == 0);
-
-    ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
-
-    unsigned int return_expression_count = array_len(return_expressions);
-    if(return_expression_count > 0) {
-        header->columns_len = return_expression_count;
-        header->columns = rm_malloc(sizeof(Column*) * header->columns_len);
-    }
-
-    for(int i = 0; i < header->columns_len; i++) {
-        ReturnElementNode *elem = return_expressions[i];
-
-        // TODO ?? this seems really pointless
-        char *column_name;
-        if (elem->alias) {
-            column_name = (char*)elem->alias;
-        } else {
-            AR_EXP_ToString(elem->exp, &column_name);
-        }
-        Column* column = _NewColumn(column_name, column_name);
-
-        header->columns[i] = column;
-    }
-
-    set->header = header;
+    resultset->column_names = column_names;
+    resultset->column_count = array_len(column_names);
     /* Replay with table header. */
-    if (set->compact) {
-        TrieMap *entities = AST_CollectEntityReferences(ast);
-        ResultSet_ReplyWithCompactHeader(set->ctx, set->header, entities);
-        TrieMap_Free(entities, TrieMap_NOP_CB);
-    } else {
-        ResultSet_ReplyWithVerboseHeader(set->ctx, set->header);
-    }
-}
-
-static void _ResultSetHeader_Free(ResultSetHeader* header) {
-    if(!header) return;
-
-    for(int i = 0; i < header->columns_len; i++) _Column_Free(header->columns[i]);
-
-    if(header->columns != NULL) {
-        rm_free(header->columns);
-    }
-
-    rm_free(header);
+    _ResultSet_ReplayHeader(resultset, column_names);
 }
 
 // Set the DISTINCT, SKIP, and LIMIT values specified in the query
@@ -152,8 +97,9 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
     set->distinct = false;
     set->compact = compact;
     set->EmitRecord = _ResultSet_SetReplyFormatter(set->compact);
+    set->column_names = NULL;
+    set->column_count = 0;
     set->recordCount = 0;    
-    set->header = NULL;
     set->bufferLen = 2048;
     set->buffer = malloc(set->bufferLen);
 
@@ -209,6 +155,5 @@ void ResultSet_Free(ResultSet *set) {
     if(!set) return;
 
     free(set->buffer);
-    if(set->header) _ResultSetHeader_Free(set->header);
     free(set);
 }

@@ -25,6 +25,8 @@ typedef struct {
     GraphContext *gc;           /* Context used for mapping attribute strings and IDs */
     ResultSetHeader *header;    /* Describes how records should look like. */
     bool compact;               /* Whether records should be returned in compact form. */
+    const char **column_names;
+    uint column_count; // TODO optional
     size_t recordCount;         /* Number of records introduced. */
     char *buffer;               /* Reusable buffer for record streaming. */
     size_t bufferLen;           /* Size of buffer in bytes. */
@@ -36,7 +38,7 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact);
 
 void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast);
 
-void ResultSet_CreateHeader(ResultSet *set, ReturnElementNode **return_expressions);
+void ResultSet_CreateHeader(ResultSet *set, const char **column_names);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 
