@@ -66,6 +66,8 @@ export CC_OBJECTS
 # will also change the dependent .c files of it
 CC_DEPS = $(patsubst %.c, %.d, $(CC_SOURCES) )
 
+RAX=../deps/rax/rax.o
+
 # Library dependencies
 LIBTRIEMAP=util/triemap/libtriemap.a
 GRAPHBLAS=../deps/GraphBLAS/build/libgraphblas.a
@@ -73,7 +75,7 @@ LIBXXHASH=../deps/xxhash/libxxhash.a
 
 # Compilation deps for the module
 LIBS=$(LIBTRIEMAP) $(GRAPHBLAS) $(LIBXXHASH)
-MODULE=$(CC_OBJECTS) $(LIBS)
+MODULE=$(CC_OBJECTS) $(RAX) $(LIBS)
 
 REDISGRAPH_CC=$(QUIET_CC)$(CC)
 
@@ -96,6 +98,9 @@ all: redisgraph.so
 
 # Include all dependency files for C files
 -include $(CC_DEPS)
+
+$(RAX):
+	@$(MAKE) -C ../deps/rax/ rax.o
 
 $(LIBXXHASH):
 	@$(MAKE) -C ../deps/xxhash lib
@@ -129,6 +134,7 @@ clean:
 ifeq ($(ALL),1)
 	@$(MAKE) -C ../deps/GraphBLAS clean
 	@$(MAKE) -C ../deps/xxhash clean
+	@$(MAKE) -C ../deps/rax clean
 endif
 	@$(MAKE) -C ../tests clean
 
