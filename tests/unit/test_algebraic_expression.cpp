@@ -16,6 +16,7 @@ extern "C" {
 #include "../../src/graph/graph.h"
 #include "../../src/query_executor.h"
 #include "../../src/graph/query_graph.h"
+#include "../../src/graph/graphcontext.h"
 #include "../../src/util/simple_timer.h"
 #include "../../src/arithmetic/algebraic_expression.h"
 #include "../../src/util/rmalloc.h"
@@ -25,18 +26,29 @@ extern "C" {
 }
 #endif
 
+extern pthread_key_t _tlsGCKey;    // Thread local storage graph context key.
+
+QueryGraph *qg;
+
+// Matrices.
+GrB_Matrix mat_p;
+GrB_Matrix mat_ef;
+GrB_Matrix mat_f;
+GrB_Matrix mat_ev;
+GrB_Matrix mat_c;
+GrB_Matrix mat_ew;
+GrB_Matrix mat_e;
+
+const char *query_no_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, e";
+const char *query_one_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, c, e";
+const char *query_multiple_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, f, c, e";
+
+const char *query_return_first_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ef";
+const char *query_return_intermidate_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ev";
+const char *query_return_last_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ew";
+
 class AlgebraicExpressionTest: public ::testing::Test {
     protected:
-
-    Graph *g;
-    QueryGraph *query_graph;
-    const char *query_no_intermidate_return_nodes;
-    const char *query_one_intermidate_return_nodes;
-    const char *query_multiple_intermidate_return_nodes;
-    const char *query_return_first_edge;
-    const char *query_return_intermidate_edge;
-    const char *query_return_last_edge;
-
     static void SetUpTestCase() {
         // Use the malloc family for allocations
         Alloc_Reset();
@@ -45,33 +57,139 @@ class AlgebraicExpressionTest: public ::testing::Test {
         GrB_init(GrB_NONBLOCKING);
         GxB_Global_Option_set(GxB_FORMAT, GxB_BY_COL); // all matrices in CSC format
         GxB_Global_Option_set(GxB_HYPER, GxB_NEVER_HYPER); // matrices are never hypersparse
+
+        // Create a graph
+        _fake_graph_context();
+        _build_graph();
+        _bind_matrices();
     }
 
     static void TearDownTestCase() {
+        _free_fake_graph_context();
         GrB_finalize();
     }
 
     void SetUp() {
-        printf("SetUp\n");
-        srand(time(NULL));
-        // Create a graph
-        g = _build_graph();
-
-        // Create a graph describing the queries which follows
-        query_graph = _build_query_graph(g);
-
-        query_no_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, e";
-        query_one_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, c, e";
-        query_multiple_intermidate_return_nodes = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN p, f, c, e";
-
-        query_return_first_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ef";
-        query_return_intermidate_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ev";
-        query_return_last_edge = "MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ew";
+        qg = QueryGraph_New(16, 16);
     }
 
     void TearDown() {
-        Graph_Free(g);
-        QueryGraph_Free(query_graph);
+        QueryGraph_Free(qg);
+    }
+
+    static void _fake_graph_context() {
+        GraphContext *gc = (GraphContext*)malloc(sizeof(GraphContext));
+
+        gc->g = Graph_New(16, 16);
+        gc->index_count = 0;
+        gc->graph_name = strdup("G");
+        gc->node_unified_schema = Schema_New("ALL", GRAPH_NO_LABEL);
+        gc->relation_unified_schema = Schema_New("ALL", GRAPH_NO_RELATION);        
+        gc->node_schemas = (Schema**)array_new(Schema*, GRAPH_DEFAULT_LABEL_CAP);
+        gc->relation_schemas = (Schema**)array_new(Schema*, GRAPH_DEFAULT_RELATION_TYPE_CAP);
+
+        GraphContext_AddSchema(gc, "Person", SCHEMA_NODE);
+        GraphContext_AddSchema(gc, "City", SCHEMA_NODE);
+        GraphContext_AddSchema(gc, "friend", SCHEMA_EDGE);
+        GraphContext_AddSchema(gc, "visit", SCHEMA_EDGE);
+        GraphContext_AddSchema(gc, "war", SCHEMA_EDGE);
+
+        int error = pthread_key_create(&_tlsGCKey, NULL);
+        ASSERT_EQ(error, 0);
+        pthread_setspecific(_tlsGCKey, gc);
+    }
+
+    /* Create a graph containing:
+     * Entities: 'people' and 'countries'.
+     * Relations: 'friend', 'visit' and 'war'. */
+    static void _build_graph() {
+        GraphContext *gc = GraphContext_GetFromTLS();
+
+        Node n;
+        Graph *g = gc->g;
+        Graph_AcquireWriteLock(g);
+
+        size_t city_count = 2;
+        size_t person_count = 2;
+        size_t node_count = person_count + city_count;
+
+        // Introduce person and country labels.
+        int city_label = GraphContext_GetSchema(gc, "City", SCHEMA_NODE)->id;
+        int person_label = GraphContext_GetSchema(gc, "Person", SCHEMA_NODE)->id;
+        Graph_AllocateNodes(g, node_count);
+
+        for(int i = 0; i < person_count; i++) {
+            Graph_CreateNode(g, person_label, &n);
+        }
+
+        for(int i = 0; i < city_count; i++) {
+            Graph_CreateNode(g, city_label, &n);
+        }
+
+        // Creates a relation matrices.
+        GrB_Index war_relation_id = GraphContext_GetSchema(gc, "war", SCHEMA_EDGE)->id;
+        GrB_Index visit_relation_id = GraphContext_GetSchema(gc, "visit", SCHEMA_EDGE)->id;
+        GrB_Index friend_relation_id = GraphContext_GetSchema(gc, "friend", SCHEMA_EDGE)->id;
+
+        // Introduce relations, connect nodes.
+        Edge e;
+        Graph_ConnectNodes(g, 0, 1, friend_relation_id, &e);
+        Graph_ConnectNodes(g, 1, 0, friend_relation_id, &e);
+
+        Graph_ConnectNodes(g, 0, 2, visit_relation_id, &e);
+        Graph_ConnectNodes(g, 0, 3, visit_relation_id, &e);
+        Graph_ConnectNodes(g, 1, 2, visit_relation_id, &e);        
+
+        Graph_ConnectNodes(g, 2, 3, war_relation_id, &e);
+        Graph_ConnectNodes(g, 3, 2, war_relation_id, &e);
+
+        Graph_ReleaseLock(g);
+    }
+
+    static void _bind_matrices() {
+        int mat_id;
+        GraphContext *gc = GraphContext_GetFromTLS();
+        Graph *g = gc->g;
+
+        mat_id = GraphContext_GetSchema(gc, "Person", SCHEMA_NODE)->id;        
+        mat_p = Graph_GetLabelMatrix(g, mat_id);
+        mat_f = Graph_GetLabelMatrix(g, mat_id);
+        
+        mat_id = GraphContext_GetSchema(gc, "City", SCHEMA_NODE)->id;
+        mat_c = Graph_GetLabelMatrix(g, mat_id);
+        mat_e = Graph_GetLabelMatrix(g, mat_id);
+        
+        mat_id = GraphContext_GetSchema(gc, "friend", SCHEMA_EDGE)->id;
+        mat_ef = Graph_GetRelationMatrix(g, mat_id);
+
+        mat_id = GraphContext_GetSchema(gc, "visit", SCHEMA_EDGE)->id;
+        mat_ev = Graph_GetRelationMatrix(g, mat_id);
+        
+        mat_id = GraphContext_GetSchema(gc, "war", SCHEMA_EDGE)->id;
+        mat_ew = Graph_GetRelationMatrix(g, mat_id);
+    }
+
+    static void _free_fake_graph_context() {
+        GraphContext *gc = GraphContext_GetFromTLS();
+        GraphContext_Free(gc);
+    }
+
+    AlgebraicExpression **build_algebraic_expression(const char *query, size_t *exp_count) {
+        GraphContext *gc = GraphContext_GetFromTLS();
+        AST **asts = ParseQuery(query, strlen(query), NULL);
+        assert(asts);
+        AST *ast = asts[0];
+        
+        BuildQueryGraph(gc, qg, ast->matchNode->_mergedPatterns);
+        // Force matrix assignment to both nodes and edges.
+        for(int i = 0; i < qg->node_count; i++) Node_GetMatrix(qg->nodes[i]);
+        for(int i = 0; i < qg->edge_count; i++) Edge_GetMatrix(qg->edges[i]);
+
+        AlgebraicExpression **ae = AlgebraicExpression_From_QueryGraph(qg, ast);
+        *exp_count = array_len(ae);
+
+        AST_Free(asts);
+        return ae;
     }
 
     void _print_matrix(GrB_Matrix mat) {
@@ -134,784 +252,650 @@ class AlgebraicExpressionTest: public ::testing::Test {
         return true;
     }
 
-    /* Create a graph containing:
-     * Entities: 'people' and 'countries'.
-     * Relations: 'friend', 'visit' and 'war'. */
-    Graph *_build_graph() {
-        Graph *g = Graph_New(16, 16);
-        Graph_AcquireWriteLock(g);
-        size_t person_count = 2;
-        size_t country_count = 2;
-        size_t node_count = person_count + country_count;
-
-        /* Introduce person and country labels. */
-        int person_label = Graph_AddLabel(g);
-        int country_label = Graph_AddLabel(g);
-        Graph_AllocateNodes(g, node_count);
-
-        for(int i = 0; i < person_count; i++) {
-            Node n;
-            Graph_CreateNode(g, person_label, &n);
-        }
-
-        for(int i = 0; i < country_count; i++) {
-            Node n;
-            Graph_CreateNode(g, country_label, &n);
-        }
-
-        // Creates a relation matrices.
-        GrB_Index friend_relation_id = Graph_AddRelationType(g);
-        GrB_Index visit_relation_id = Graph_AddRelationType(g);
-        GrB_Index war_relation_id = Graph_AddRelationType(g);
-
-        // Introduce relations, connect nodes.
-        Edge e;
-        Graph_ConnectNodes(g, 0, 1, friend_relation_id, &e);
-        Graph_ConnectNodes(g, 1, 0, friend_relation_id, &e);
-
-        Graph_ConnectNodes(g, 0, 2, visit_relation_id, &e);
-        Graph_ConnectNodes(g, 0, 3, visit_relation_id, &e);
-        Graph_ConnectNodes(g, 1, 2, visit_relation_id, &e);        
-
-        Graph_ConnectNodes(g, 2, 3, war_relation_id, &e);
-        Graph_ConnectNodes(g, 3, 2, war_relation_id, &e);
-        return g;
+    void _compare_algebraic_operand(AlgebraicExpressionOperand *a, AlgebraicExpressionOperand *b) {
+        ASSERT_EQ(a->free, b->free);
+        ASSERT_EQ(a->operand, b->operand);
+        ASSERT_EQ(a->transpose, b->transpose);
     }
 
-    QueryGraph *_build_query_graph(Graph *g) {
-        /* Query
-         * MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) */
-        
-        QueryGraph *q = QueryGraph_New(1, 1);
-        // Create Nodes
-        Node *p = Node_New("Person", "p");
-        Node *f = Node_New("Person", "f");
-        Node *c = Node_New("City", "c");
-        Node *e = Node_New("City", "e");
-
-        // Set node matrices according to the order they've been presented
-        // during graph construction.
-
-        p->labelID = 0;
-        f->labelID = 0;
-        c->labelID = 1;
-        e->labelID = 1;
-
-        p->mat = Graph_GetLabelMatrix(g, p->labelID);
-        f->mat = Graph_GetLabelMatrix(g, f->labelID);
-        c->mat = Graph_GetLabelMatrix(g, c->labelID);
-        e->mat = Graph_GetLabelMatrix(g, e->labelID);
-
-        // Create edges
-        Edge *ef = Edge_New(p, f, "friend", "ef");
-        Edge *ev = Edge_New(f, c, "visit", "ev");
-        Edge *ew = Edge_New(c, e, "war", "ew");
-        
-        // Set edges matrices according to the order they've been presented
-        // during graph construction.
-        ef->relationID = 0;
-        ev->relationID = 1;
-        ew->relationID = 2;
-        ef->mat = Graph_GetRelationMatrix(g, ef->relationID);
-        ev->mat = Graph_GetRelationMatrix(g, ev->relationID);
-        ew->mat = Graph_GetRelationMatrix(g, ew->relationID);
-
-        // Construct query graph
-        QueryGraph_AddNode(q, p);
-        QueryGraph_AddNode(q, f);
-        QueryGraph_AddNode(q, c);
-        QueryGraph_AddNode(q, e);
-        QueryGraph_ConnectNodes(q, p, f, ef);
-        QueryGraph_ConnectNodes(q, f, c, ev);
-        QueryGraph_ConnectNodes(q, c, e, ew);
-
-        return q;
+    void _compare_algebraic_expression(AlgebraicExpression *a, AlgebraicExpression *b) {
+        ASSERT_EQ(a->operand_count, b->operand_count);
+        for(uint i = 0; i < a->operand_count; i++) {
+            _compare_algebraic_operand(a->operands + i, b->operands + i);
+        }
     }
 
-    AlgebraicExpression **_build_algebraic_expression(const char *query, size_t *exp_count) {
-        *exp_count = 0;
-        AlgebraicExpression **ae = NULL;
+    void compare_algebraic_expressions(AlgebraicExpression **actual, AlgebraicExpression **expected, uint expected_count) {
+        uint actual_count = array_len(actual);
 
-        AST **ast = ParseQuery(query, strlen(query), NULL);
-        ae = AlgebraicExpression_From_Query(
-            ast[0],
-            ast[0]->matchNode->_mergedPatterns,
-            query_graph,
-            exp_count);
-        return ae;
+        ASSERT_EQ(actual_count, expected_count);
+        for(uint i = 0; i < actual_count; i++) {
+            _compare_algebraic_expression(actual[i], expected[i]);
+        }
+    }
 
-        AST_Free(ast);
+    void free_algebraic_expressions(AlgebraicExpression **exps, uint exp_count) {
+        for(uint i = 0; i < exp_count; i++) {
+            AlgebraicExpression *exp = exps[i];
+            AlgebraicExpression_Free(exp);
+        }
     }
 };
 
-// TEST_F(AlgebraicExpressionTest, Exp_OP_ADD) {
-//     // Exp = A + B
-//     GrB_Matrix A;
-//     GrB_Matrix B;
-//     GrB_Matrix C;
-//     GrB_Matrix res;
+TEST_F(AlgebraicExpressionTest, Exp_OP_ADD) {
+    // Exp = A + B
+    GrB_Matrix A;
+    GrB_Matrix B;
+    GrB_Matrix C;
+    GrB_Matrix res;
 
-//     // A
-//     // 1 1
-//     // 0 0
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 1);
+    // A
+    // 1 1
+    // 0 0
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 1);
 
-//     // B
-//     // 0 1
-//     // 1 1
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(B, true, 0, 1);
-//     GrB_Matrix_setElement_BOOL(B, true, 1, 0);
-//     GrB_Matrix_setElement_BOOL(B, true, 1, 1);
+    // B
+    // 0 1
+    // 1 1
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(B, true, 0, 1);
+    GrB_Matrix_setElement_BOOL(B, true, 1, 0);
+    GrB_Matrix_setElement_BOOL(B, true, 1, 1);
 
-//     // C
-//     // 1 1
-//     // 1 1
-//     GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(C, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(C, true, 0, 1);
-//     GrB_Matrix_setElement_BOOL(C, true, 1, 0);
-//     GrB_Matrix_setElement_BOOL(C, true, 1, 1);
+    // C
+    // 1 1
+    // 1 1
+    GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(C, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(C, true, 0, 1);
+    GrB_Matrix_setElement_BOOL(C, true, 1, 0);
+    GrB_Matrix_setElement_BOOL(C, true, 1, 1);
 
-//     // Matrix used for intermidate computations of AlgebraicExpression_Eval
-//     // but also contains the result of expression evaluation.
-//     GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
+    // Matrix used for intermidate computations of AlgebraicExpression_Eval
+    // but also contains the result of expression evaluation.
+    GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
     
-//     // A + B
-//     AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
-//     AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
-//     AlgebraicExpressionNode_AppendLeftChild(exp, a);
-//     AlgebraicExpressionNode_AppendRightChild(exp, b);
+    // A + B
+    AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
+    AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
+    AlgebraicExpressionNode_AppendLeftChild(exp, a);
+    AlgebraicExpressionNode_AppendRightChild(exp, b);
 
-//     AlgebraicExpression_SumOfMul(&exp);
-//     AlgebraicExpression_Eval(exp, res);
+    AlgebraicExpression_SumOfMul(&exp);
+    AlgebraicExpression_Eval(exp, res);
 
-//     // Using the A matrix described above,
-//     // A + B = C.
-//     ASSERT_TRUE(_compare_matrices(res, C));
+    // Using the A matrix described above,
+    // A + B = C.
+    ASSERT_TRUE(_compare_matrices(res, C));
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&C);
-//     GrB_Matrix_free(&res);
-//     AlgebraicExpressionNode_Free(exp);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&C);
+    GrB_Matrix_free(&res);
+    AlgebraicExpressionNode_Free(exp);
+}
 
-// TEST_F(AlgebraicExpressionTest, Exp_OP_MUL) {
-//     // Exp = A * I
-//     GrB_Matrix A;
-//     GrB_Matrix I;
+TEST_F(AlgebraicExpressionTest, Exp_OP_MUL) {
+    // Exp = A * I
+    GrB_Matrix A;
+    GrB_Matrix I;
     
-//     // A
-//     // 1 1
-//     // 0 0
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 1);
+    // A
+    // 1 1
+    // 0 0
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 1);
 
-//     // I
-//     // 1 0
-//     // 0 1
-//     GrB_Matrix_new(&I, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(I, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(I, true, 1, 1);
-//     GrB_Matrix res;
+    // I
+    // 1 0
+    // 0 1
+    GrB_Matrix_new(&I, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(I, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(I, true, 1, 1);
+    GrB_Matrix res;
 
-//     // Matrix used for intermidate computations of AlgebraicExpression_Eval
-//     // but also contains the result of expression evaluation.
-//     GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
+    // Matrix used for intermidate computations of AlgebraicExpression_Eval
+    // but also contains the result of expression evaluation.
+    GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
     
-//     // A * I
-//     AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *i = AlgebraicExpressionNode_NewOperandNode(I);
-//     AlgebraicExpressionNode_AppendLeftChild(exp, a);
-//     AlgebraicExpressionNode_AppendRightChild(exp, i);
+    // A * I
+    AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *i = AlgebraicExpressionNode_NewOperandNode(I);
+    AlgebraicExpressionNode_AppendLeftChild(exp, a);
+    AlgebraicExpressionNode_AppendRightChild(exp, i);
 
-//     AlgebraicExpression_SumOfMul(&exp);
-//     AlgebraicExpression_Eval(exp, res);
+    AlgebraicExpression_SumOfMul(&exp);
+    AlgebraicExpression_Eval(exp, res);
 
-//     // Using the A matrix described above,
-//     // A * I = A.
-//     ASSERT_TRUE(_compare_matrices(res, A));
+    // Using the A matrix described above,
+    // A * I = A.
+    ASSERT_TRUE(_compare_matrices(res, A));
 
-//     GrB_Matrix_free(&A);    
-//     GrB_Matrix_free(&I);
-//     GrB_Matrix_free(&res);
-//     AlgebraicExpressionNode_Free(exp);
-// }
+    GrB_Matrix_free(&A);    
+    GrB_Matrix_free(&I);
+    GrB_Matrix_free(&res);
+    AlgebraicExpressionNode_Free(exp);
+}
 
-// TEST_F(AlgebraicExpressionTest, Exp_OP_ADD_Transpose) {
-//     // Exp = A + Transpose(A)
-//     GrB_Matrix A;
-//     GrB_Matrix B;
-//     GrB_Matrix res;
+TEST_F(AlgebraicExpressionTest, Exp_OP_ADD_Transpose) {
+    // Exp = A + Transpose(A)
+    GrB_Matrix A;
+    GrB_Matrix B;
+    GrB_Matrix res;
 
-//     // A
-//     // 1 1
-//     // 0 0
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 1);
+    // A
+    // 1 1
+    // 0 0
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 1);
 
-//     // B
-//     // 1 0
-//     // 1 0
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(B, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(B, true, 1, 0);
+    // B
+    // 1 0
+    // 1 0
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(B, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(B, true, 1, 0);
 
-//     // Matrix used for intermidate computations of AlgebraicExpression_Eval
-//     // but also contains the result of expression evaluation.
-//     GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
+    // Matrix used for intermidate computations of AlgebraicExpression_Eval
+    // but also contains the result of expression evaluation.
+    GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
     
-//     // A + Transpose(A)
-//     AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
-//     AlgebraicExpressionNode *transpose = AlgebraicExpressionNode_NewOperationNode(AL_EXP_TRANSPOSE);
-//     AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
+    // A + Transpose(A)
+    AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
+    AlgebraicExpressionNode *transpose = AlgebraicExpressionNode_NewOperationNode(AL_EXP_TRANSPOSE);
+    AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
     
-//     AlgebraicExpressionNode_AppendLeftChild(exp, transpose);
-//     AlgebraicExpressionNode_AppendLeftChild(transpose, a);
-//     AlgebraicExpressionNode_AppendRightChild(exp, b);
+    AlgebraicExpressionNode_AppendLeftChild(exp, transpose);
+    AlgebraicExpressionNode_AppendLeftChild(transpose, a);
+    AlgebraicExpressionNode_AppendRightChild(exp, b);
 
-//     AlgebraicExpression_SumOfMul(&exp);
-//     AlgebraicExpression_Eval(exp, res);
+    AlgebraicExpression_SumOfMul(&exp);
+    AlgebraicExpression_Eval(exp, res);
 
-//     // Using the A matrix described above,
-//     // A + Transpose(A) = B.
-//     ASSERT_TRUE(_compare_matrices(res, B));
+    // Using the A matrix described above,
+    // A + Transpose(A) = B.
+    ASSERT_TRUE(_compare_matrices(res, B));
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&res);
-//     AlgebraicExpressionNode_Free(exp);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&res);
+    AlgebraicExpressionNode_Free(exp);
+}
 
-// TEST_F(AlgebraicExpressionTest, Exp_OP_MUL_Transpose) {
-//     // Exp = Transpose(A) * A
-//     GrB_Matrix A;
-//     GrB_Matrix B;
-//     GrB_Matrix res;
+TEST_F(AlgebraicExpressionTest, Exp_OP_MUL_Transpose) {
+    // Exp = Transpose(A) * A
+    GrB_Matrix A;
+    GrB_Matrix B;
+    GrB_Matrix res;
 
-//     // A
-//     // 1 1
-//     // 0 0
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 1);
+    // A
+    // 1 1
+    // 0 0
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 1);
 
-//     // B
-//     // 1 1
-//     // 1 1
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(B, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(B, true, 0, 1);
-//     GrB_Matrix_setElement_BOOL(B, true, 1, 0);
-//     GrB_Matrix_setElement_BOOL(B, true, 1, 1);
+    // B
+    // 1 1
+    // 1 1
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(B, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(B, true, 0, 1);
+    GrB_Matrix_setElement_BOOL(B, true, 1, 0);
+    GrB_Matrix_setElement_BOOL(B, true, 1, 1);
 
-//     // Matrix used for intermidate computations of AlgebraicExpression_Eval
-//     // but also contains the result of expression evaluation.
-//     GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
+    // Matrix used for intermidate computations of AlgebraicExpression_Eval
+    // but also contains the result of expression evaluation.
+    GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
     
-//     // Transpose(A) * A
-//     AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *transpose = AlgebraicExpressionNode_NewOperationNode(AL_EXP_TRANSPOSE);
-//     AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
+    // Transpose(A) * A
+    AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *transpose = AlgebraicExpressionNode_NewOperationNode(AL_EXP_TRANSPOSE);
+    AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
     
-//     AlgebraicExpressionNode_AppendLeftChild(exp, transpose);
-//     AlgebraicExpressionNode_AppendRightChild(transpose, a);
-//     AlgebraicExpressionNode_AppendRightChild(exp, a);
+    AlgebraicExpressionNode_AppendLeftChild(exp, transpose);
+    AlgebraicExpressionNode_AppendRightChild(transpose, a);
+    AlgebraicExpressionNode_AppendRightChild(exp, a);
 
-//     AlgebraicExpression_SumOfMul(&exp);
-//     AlgebraicExpression_Eval(exp, res);
+    AlgebraicExpression_SumOfMul(&exp);
+    AlgebraicExpression_Eval(exp, res);
 
-//     // Using the A matrix described above,
-//     // Transpose(A) * A = B.
-//     ASSERT_TRUE(_compare_matrices(res, B));
+    // Using the A matrix described above,
+    // Transpose(A) * A = B.
+    ASSERT_TRUE(_compare_matrices(res, B));
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&res);
-//     AlgebraicExpressionNode_Free(exp);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&res);
+    AlgebraicExpressionNode_Free(exp);
+}
 
-// TEST_F(AlgebraicExpressionTest, Exp_OP_A_MUL_B_Plus_C) {
-//     // Exp = A*(B+C)
-//     GrB_Matrix A;
-//     GrB_Matrix B;
-//     GrB_Matrix C;
-//     GrB_Matrix res;
+TEST_F(AlgebraicExpressionTest, Exp_OP_A_MUL_B_Plus_C) {
+    // Exp = A*(B+C)
+    GrB_Matrix A;
+    GrB_Matrix B;
+    GrB_Matrix C;
+    GrB_Matrix res;
 
-//     // A
-//     // 1 1
-//     // 0 0
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 0);
-//     GrB_Matrix_setElement_BOOL(A, true, 0, 1);
+    // A
+    // 1 1
+    // 0 0
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 0);
+    GrB_Matrix_setElement_BOOL(A, true, 0, 1);
 
-//     // B
-//     // 1 0
-//     // 0 0
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(B, true, 0, 0);
+    // B
+    // 1 0
+    // 0 0
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(B, true, 0, 0);
 
-//     // C
-//     // 0 0
-//     // 0 1
-//     GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
-//     GrB_Matrix_setElement_BOOL(C, true, 1, 1);
+    // C
+    // 0 0
+    // 0 1
+    GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
+    GrB_Matrix_setElement_BOOL(C, true, 1, 1);
 
-//     // Matrix used for intermidate computations of AlgebraicExpression_Eval
-//     // but also contains the result of expression evaluation.
-//     GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
+    // Matrix used for intermidate computations of AlgebraicExpression_Eval
+    // but also contains the result of expression evaluation.
+    GrB_Matrix_new(&res, GrB_BOOL, 2, 2);
     
-//     // A * (B+C) = A.
-//     AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
-//     AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
-//     AlgebraicExpressionNode *c = AlgebraicExpressionNode_NewOperandNode(C);
+    // A * (B+C) = A.
+    AlgebraicExpressionNode *exp = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
+    AlgebraicExpressionNode *a = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *b = AlgebraicExpressionNode_NewOperandNode(B);
+    AlgebraicExpressionNode *c = AlgebraicExpressionNode_NewOperandNode(C);
     
-//     AlgebraicExpressionNode_AppendLeftChild(exp, a);
-//     AlgebraicExpressionNode_AppendRightChild(exp, add);
-//     AlgebraicExpressionNode_AppendLeftChild(add, b);
-//     AlgebraicExpressionNode_AppendRightChild(add, c);
+    AlgebraicExpressionNode_AppendLeftChild(exp, a);
+    AlgebraicExpressionNode_AppendRightChild(exp, add);
+    AlgebraicExpressionNode_AppendLeftChild(add, b);
+    AlgebraicExpressionNode_AppendRightChild(add, c);
 
-//     // AB + AC.
-//     AlgebraicExpression_SumOfMul(&exp);
-//     AlgebraicExpression_Eval(exp, res);
-//     ASSERT_TRUE(_compare_matrices(res, A));
+    // AB + AC.
+    AlgebraicExpression_SumOfMul(&exp);
+    AlgebraicExpression_Eval(exp, res);
+    ASSERT_TRUE(_compare_matrices(res, A));
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&C);
-//     GrB_Matrix_free(&res);
-//     AlgebraicExpressionNode_Free(exp);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&C);
+    GrB_Matrix_free(&res);
+    AlgebraicExpressionNode_Free(exp);
+}
 
-// TEST_F(AlgebraicExpressionTest, ExpTransform_A_Times_B_Plus_C) {
-//     // Test Mul / Add transformation:
-//     // A*(B+C) -> A*B + A*C
-//     AlgebraicExpressionNode *root = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
+TEST_F(AlgebraicExpressionTest, ExpTransform_A_Times_B_Plus_C) {
+    // Test Mul / Add transformation:
+    // A*(B+C) -> A*B + A*C
+    AlgebraicExpressionNode *root = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
 
-//     GrB_Matrix A;
-//     GrB_Matrix B;    
-//     GrB_Matrix C;
+    GrB_Matrix A;
+    GrB_Matrix B;    
+    GrB_Matrix C;
     
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
 
-//     AlgebraicExpressionNode *aExp = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *bExp = AlgebraicExpressionNode_NewOperandNode(B);
-//     AlgebraicExpressionNode *cExp = AlgebraicExpressionNode_NewOperandNode(C);
+    AlgebraicExpressionNode *aExp = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *bExp = AlgebraicExpressionNode_NewOperandNode(B);
+    AlgebraicExpressionNode *cExp = AlgebraicExpressionNode_NewOperandNode(C);
     
-//     // A*(B+C)
-//     AlgebraicExpressionNode_AppendLeftChild(root, aExp);
-//     AlgebraicExpressionNode_AppendRightChild(root, add);
-//     AlgebraicExpressionNode_AppendLeftChild(add, bExp);
-//     AlgebraicExpressionNode_AppendRightChild(add, cExp);
+    // A*(B+C)
+    AlgebraicExpressionNode_AppendLeftChild(root, aExp);
+    AlgebraicExpressionNode_AppendRightChild(root, add);
+    AlgebraicExpressionNode_AppendLeftChild(add, bExp);
+    AlgebraicExpressionNode_AppendRightChild(add, cExp);
 
-//     AlgebraicExpression_SumOfMul(&root);
+    AlgebraicExpression_SumOfMul(&root);
 
-//     // Verifications
-//     // (A*B)+(A*C)
-//     ASSERT_TRUE(root->type == AL_OPERATION && root->operation.op == AL_EXP_ADD);
+    // Verifications
+    // (A*B)+(A*C)
+    ASSERT_TRUE(root->type == AL_OPERATION && root->operation.op == AL_EXP_ADD);
 
-//     AlgebraicExpressionNode *rootLeftChild = root->operation.l;
-//     AlgebraicExpressionNode *rootRightChild = root->operation.r;
-//     ASSERT_TRUE(rootLeftChild && rootLeftChild->type == AL_OPERATION && rootLeftChild->operation.op == AL_EXP_MUL);
-//     ASSERT_TRUE(rootRightChild && rootRightChild->type == AL_OPERATION && rootRightChild->operation.op == AL_EXP_MUL);
+    AlgebraicExpressionNode *rootLeftChild = root->operation.l;
+    AlgebraicExpressionNode *rootRightChild = root->operation.r;
+    ASSERT_TRUE(rootLeftChild && rootLeftChild->type == AL_OPERATION && rootLeftChild->operation.op == AL_EXP_MUL);
+    ASSERT_TRUE(rootRightChild && rootRightChild->type == AL_OPERATION && rootRightChild->operation.op == AL_EXP_MUL);
 
-//     AlgebraicExpressionNode *leftLeft = rootLeftChild->operation.l;
-//     ASSERT_TRUE(leftLeft->type == AL_OPERAND && leftLeft->operand == A);
+    AlgebraicExpressionNode *leftLeft = rootLeftChild->operation.l;
+    ASSERT_TRUE(leftLeft->type == AL_OPERAND && leftLeft->operand == A);
 
-//     AlgebraicExpressionNode *leftRight = rootLeftChild->operation.r;
-//     ASSERT_TRUE(leftRight->type == AL_OPERAND && leftRight->operand == B);
+    AlgebraicExpressionNode *leftRight = rootLeftChild->operation.r;
+    ASSERT_TRUE(leftRight->type == AL_OPERAND && leftRight->operand == B);
 
-//     AlgebraicExpressionNode *rightLeft = rootRightChild->operation.l;
-//     ASSERT_TRUE(rightLeft->type == AL_OPERAND && rightLeft->operand == A);
+    AlgebraicExpressionNode *rightLeft = rootRightChild->operation.l;
+    ASSERT_TRUE(rightLeft->type == AL_OPERAND && rightLeft->operand == A);
 
-//     AlgebraicExpressionNode *rightRight = rootRightChild->operation.r;
-//     ASSERT_TRUE(rightRight->type == AL_OPERAND && rightRight->operand == C);
+    AlgebraicExpressionNode *rightRight = rootRightChild->operation.r;
+    ASSERT_TRUE(rightRight->type == AL_OPERAND && rightRight->operand == C);
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&C);
-//     AlgebraicExpressionNode_Free(root);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&C);
+    AlgebraicExpressionNode_Free(root);
+}
 
-// TEST_F(AlgebraicExpressionTest, ExpTransform_AB_Times_C_Plus_D) {
-//     // Test Mul / Add transformation:
-//     // A*B*(C+D) -> A*B*C + A*B*D
-//     AlgebraicExpressionNode *root = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *mul = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
-//     AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
+TEST_F(AlgebraicExpressionTest, ExpTransform_AB_Times_C_Plus_D) {
+    // Test Mul / Add transformation:
+    // A*B*(C+D) -> A*B*C + A*B*D
+    AlgebraicExpressionNode *root = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *mul = AlgebraicExpressionNode_NewOperationNode(AL_EXP_MUL);
+    AlgebraicExpressionNode *add = AlgebraicExpressionNode_NewOperationNode(AL_EXP_ADD);
 
-//     GrB_Matrix A;
-//     GrB_Matrix B;    
-//     GrB_Matrix C;
-//     GrB_Matrix D;
+    GrB_Matrix A;
+    GrB_Matrix B;    
+    GrB_Matrix C;
+    GrB_Matrix D;
     
-//     GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
-//     GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
-//     GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
-//     GrB_Matrix_new(&D, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&A, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&B, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&C, GrB_BOOL, 2, 2);
+    GrB_Matrix_new(&D, GrB_BOOL, 2, 2);
 
-//     AlgebraicExpressionNode *aExp = AlgebraicExpressionNode_NewOperandNode(A);
-//     AlgebraicExpressionNode *bExp = AlgebraicExpressionNode_NewOperandNode(B);
-//     AlgebraicExpressionNode *cExp = AlgebraicExpressionNode_NewOperandNode(C);
-//     AlgebraicExpressionNode *dExp = AlgebraicExpressionNode_NewOperandNode(D);
+    AlgebraicExpressionNode *aExp = AlgebraicExpressionNode_NewOperandNode(A);
+    AlgebraicExpressionNode *bExp = AlgebraicExpressionNode_NewOperandNode(B);
+    AlgebraicExpressionNode *cExp = AlgebraicExpressionNode_NewOperandNode(C);
+    AlgebraicExpressionNode *dExp = AlgebraicExpressionNode_NewOperandNode(D);
     
-//     // A*B*(C+D)
-//     AlgebraicExpressionNode_AppendLeftChild(root, mul);
-//     AlgebraicExpressionNode_AppendRightChild(root, add);
+    // A*B*(C+D)
+    AlgebraicExpressionNode_AppendLeftChild(root, mul);
+    AlgebraicExpressionNode_AppendRightChild(root, add);
 
-//     AlgebraicExpressionNode_AppendLeftChild(mul, aExp);
-//     AlgebraicExpressionNode_AppendRightChild(mul, bExp);
+    AlgebraicExpressionNode_AppendLeftChild(mul, aExp);
+    AlgebraicExpressionNode_AppendRightChild(mul, bExp);
 
-//     AlgebraicExpressionNode_AppendLeftChild(add, cExp);
-//     AlgebraicExpressionNode_AppendRightChild(add, dExp);
+    AlgebraicExpressionNode_AppendLeftChild(add, cExp);
+    AlgebraicExpressionNode_AppendRightChild(add, dExp);
 
-//     AlgebraicExpression_SumOfMul(&root);
+    AlgebraicExpression_SumOfMul(&root);
 
-//     // Verifications
-//     // (A*B*C)+(A*B*D)
-//     ASSERT_TRUE(root->type == AL_OPERATION && root->operation.op == AL_EXP_ADD);
+    // Verifications
+    // (A*B*C)+(A*B*D)
+    ASSERT_TRUE(root->type == AL_OPERATION && root->operation.op == AL_EXP_ADD);
 
-//     AlgebraicExpressionNode *rootLeftChild = root->operation.l;
-//     ASSERT_TRUE(rootLeftChild && rootLeftChild->type == AL_OPERATION && rootLeftChild->operation.op == AL_EXP_MUL);
+    AlgebraicExpressionNode *rootLeftChild = root->operation.l;
+    ASSERT_TRUE(rootLeftChild && rootLeftChild->type == AL_OPERATION && rootLeftChild->operation.op == AL_EXP_MUL);
 
-//     AlgebraicExpressionNode *rootRightChild = root->operation.r;
-//     ASSERT_TRUE(rootRightChild && rootRightChild->type == AL_OPERATION && rootRightChild->operation.op == AL_EXP_MUL);
+    AlgebraicExpressionNode *rootRightChild = root->operation.r;
+    ASSERT_TRUE(rootRightChild && rootRightChild->type == AL_OPERATION && rootRightChild->operation.op == AL_EXP_MUL);
 
-//     AlgebraicExpressionNode *leftLeft = rootLeftChild->operation.l;
-//     ASSERT_TRUE(leftLeft->type == AL_OPERATION && leftLeft->operation.op == AL_EXP_MUL && leftLeft->operation.reusable == true);
+    AlgebraicExpressionNode *leftLeft = rootLeftChild->operation.l;
+    ASSERT_TRUE(leftLeft->type == AL_OPERATION && leftLeft->operation.op == AL_EXP_MUL && leftLeft->operation.reusable == true);
 
-//     AlgebraicExpressionNode *leftLeftLeft = leftLeft->operation.l;
-//     ASSERT_TRUE(leftLeftLeft->type == AL_OPERAND && leftLeftLeft->operand == A);
+    AlgebraicExpressionNode *leftLeftLeft = leftLeft->operation.l;
+    ASSERT_TRUE(leftLeftLeft->type == AL_OPERAND && leftLeftLeft->operand == A);
 
-//     AlgebraicExpressionNode *leftLeftRight = leftLeft->operation.r;
-//     ASSERT_TRUE(leftLeftRight->type == AL_OPERAND && leftLeftRight->operand == B);
+    AlgebraicExpressionNode *leftLeftRight = leftLeft->operation.r;
+    ASSERT_TRUE(leftLeftRight->type == AL_OPERAND && leftLeftRight->operand == B);
 
-//     AlgebraicExpressionNode *leftRight = rootLeftChild->operation.r;
-//     ASSERT_TRUE(leftRight->type == AL_OPERAND && leftRight->operand == C);
+    AlgebraicExpressionNode *leftRight = rootLeftChild->operation.r;
+    ASSERT_TRUE(leftRight->type == AL_OPERAND && leftRight->operand == C);
 
-//     AlgebraicExpressionNode *rightLeft = rootRightChild->operation.l;
-//     ASSERT_TRUE(rightLeft->type == AL_OPERATION && rightLeft->operation.op == AL_EXP_MUL && rightLeft->operation.reusable == true);
+    AlgebraicExpressionNode *rightLeft = rootRightChild->operation.l;
+    ASSERT_TRUE(rightLeft->type == AL_OPERATION && rightLeft->operation.op == AL_EXP_MUL && rightLeft->operation.reusable == true);
 
-//     AlgebraicExpressionNode *rightLeftLeft = rightLeft->operation.l;
-//     ASSERT_TRUE(rightLeftLeft->type == AL_OPERAND && rightLeftLeft->operand == A);
+    AlgebraicExpressionNode *rightLeftLeft = rightLeft->operation.l;
+    ASSERT_TRUE(rightLeftLeft->type == AL_OPERAND && rightLeftLeft->operand == A);
 
-//     AlgebraicExpressionNode *rightLeftRight = rightLeft->operation.r;
-//     ASSERT_TRUE(rightLeftRight->type == AL_OPERAND && rightLeftRight->operand == B);
+    AlgebraicExpressionNode *rightLeftRight = rightLeft->operation.r;
+    ASSERT_TRUE(rightLeftRight->type == AL_OPERAND && rightLeftRight->operand == B);
 
-//     AlgebraicExpressionNode *rightRight = rootRightChild->operation.r;
-//     ASSERT_TRUE(rightRight->type == AL_OPERAND && rightRight->operand == D);
+    AlgebraicExpressionNode *rightRight = rootRightChild->operation.r;
+    ASSERT_TRUE(rightRight->type == AL_OPERAND && rightRight->operand == D);
 
-//     GrB_Matrix_free(&A);
-//     GrB_Matrix_free(&B);
-//     GrB_Matrix_free(&C);
-//     GrB_Matrix_free(&D);
-//     AlgebraicExpressionNode_Free(root);
-// }
+    GrB_Matrix_free(&A);
+    GrB_Matrix_free(&B);
+    GrB_Matrix_free(&C);
+    GrB_Matrix_free(&D);
+    AlgebraicExpressionNode_Free(root);
+}
 
-// TEST_F(AlgebraicExpressionTest, MultipleIntermidateReturnNodes) {
-//     Node *n;
-//     Edge *e;
-//     size_t exp_count = 0;
-//     const char *query = query_multiple_intermidate_return_nodes;
-//     AlgebraicExpression **ae = _build_algebraic_expression(query, &exp_count);
-//     ASSERT_EQ(exp_count, 3);
-    
-//     // Validate first expression.
-//     AlgebraicExpression *exp = ae[0];
-//     ASSERT_EQ(exp->op, AL_EXP_MUL);
-//     ASSERT_EQ(exp->operand_count, 3);
-
-//     n = QueryGraph_GetNodeByAlias(query_graph, "p");
-//     ASSERT_EQ(exp->operands[0].operand, n->mat);
-//     e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-//     ASSERT_EQ(exp->operands[1].operand, e->mat);
-//     n = QueryGraph_GetNodeByAlias(query_graph, "f");
-//     ASSERT_EQ(exp->operands[2].operand, n->mat);
-
-//     // Validate second expression.
-//     exp = ae[1];
-//     ASSERT_EQ(exp->op, AL_EXP_MUL);
-//     ASSERT_EQ(exp->operand_count, 2);
-//     n = QueryGraph_GetNodeByAlias(query_graph, "c");
-//     ASSERT_EQ(exp->operands[0].operand, n->mat);
-//     e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-//     ASSERT_EQ(exp->operands[1].operand, e->mat);
-
-//     // Validate third expression.
-//     exp = ae[2];
-//     ASSERT_EQ(exp->op, AL_EXP_MUL);
-//     ASSERT_EQ(exp->operand_count, 2);
-//     n = QueryGraph_GetNodeByAlias(query_graph, "e");
-//     ASSERT_EQ(exp->operands[0].operand, n->mat);
-//     e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-//     ASSERT_EQ(exp->operands[1].operand, e->mat);
-
-//     // Clean up.
-//     for(int i = 0; i < exp_count; i++) AlgebraicExpression_Free(ae[i]);
-//     free(ae);
-// }
-
-TEST_F(AlgebraicExpressionTest, OneIntermidateReturnNode) {
-    Edge *e;
-    Node *n;
+TEST_F(AlgebraicExpressionTest, MultipleIntermidateReturnNodes) {
     size_t exp_count = 0;
-    const char *query = query_one_intermidate_return_nodes;
-    AST **ast = ParseQuery(query, strlen(query), NULL);
-    AlgebraicExpression **ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
+    const char *q = query_multiple_intermidate_return_nodes;
+    AlgebraicExpression **actual = build_algebraic_expression(q, &exp_count);
+    ASSERT_EQ(exp_count, 3);
 
-    exp_count = array_len(ae);
-    ASSERT_EQ(exp_count, 2);
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 3);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    expected[0] = exp;
 
-    // Validate first expression.
-    AlgebraicExpression *exp = ae[0];
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    expected[1] = exp;
 
-    // Validate AlgebraicExpression structure.
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 5);
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[2] = exp;
 
-    n = QueryGraph_GetNodeByAlias(query_graph, "p");
-    ASSERT_EQ(exp->operands[4].operand, n->mat);
-    ASSERT_STREQ(exp->src_node->alias, "p");
-    
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-    ASSERT_EQ(exp->operands[3].operand, e->mat);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "f");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "c");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    ASSERT_STREQ(exp->dest_node->alias, "c");
-
-    // Validate second expression.
-    exp = ae[1];
-
-    // Validate AlgebraicExpression structure.
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 2);
-    
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-    ASSERT_STREQ(exp->src_node->alias, "c");
-    
-    n = QueryGraph_GetNodeByAlias(query_graph, "e");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    ASSERT_STREQ(exp->dest_node->alias, "e");
+    compare_algebraic_expressions(actual, expected, 3);
 
     // Clean up.
-    for(int i = 0; i < exp_count; i++) AlgebraicExpression_Free(ae[i]);
-    array_free(ae);
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
+}
+
+TEST_F(AlgebraicExpressionTest, OneIntermidateReturnNode) {
+    size_t exp_count = 0;
+    const char *q = query_one_intermidate_return_nodes;
+    AlgebraicExpression **actual = build_algebraic_expression(q, &exp_count);
+
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 2);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    expected[0] = exp;
+
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[1] = exp;
+
+    compare_algebraic_expressions(actual, expected, 2);
+
+    // Clean up.
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
 }
 
 TEST_F(AlgebraicExpressionTest, NoIntermidateReturnNodes) {
-    Node *n;
-    Edge *e;
     size_t exp_count = 0;
-    const char *query = query_no_intermidate_return_nodes;
-    AST **ast = ParseQuery(query, strlen(query), NULL);
+    const char *q = query_no_intermidate_return_nodes;
+    AlgebraicExpression **actual = build_algebraic_expression(q, &exp_count);
+    
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 1);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[0] = exp;
 
-    AlgebraicExpression **ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
-
-    exp_count = array_len(ae);
-    ASSERT_EQ(exp_count, 1);
-
-    AlgebraicExpression *exp = ae[0];
-
-    // Validate AlgebraicExpression structure.
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 7);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "p");
-    ASSERT_EQ(exp->operands[6].operand, n->mat);
-    ASSERT_STREQ(exp->src_node->alias, "p");
-
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-    ASSERT_EQ(exp->operands[5].operand, e->mat);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "f");
-    ASSERT_EQ(exp->operands[4].operand, n->mat);
-
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-    ASSERT_EQ(exp->operands[3].operand, e->mat);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "c");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-
-    n = QueryGraph_GetNodeByAlias(query_graph, "e");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    ASSERT_STREQ(exp->dest_node->alias, "e");
+    compare_algebraic_expressions(actual, expected, 1);
 
     // Clean up.
-    AST_Free(ast);
-    AlgebraicExpression_Free(exp);
-    array_free(ae);
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
 }
 
 TEST_F(AlgebraicExpressionTest, OneIntermidateReturnEdge) {
-    Node *n;
-    Edge *e;    
     size_t exp_count;
-    const char *query;
-    AlgebraicExpression **ae;
-    AlgebraicExpression *exp;
+    const char *q;
+    AlgebraicExpression **actual;
 
-    //==============================================================================
+    //==============================================================================================
     //=== MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ef
-    //==============================================================================
+    //==============================================================================================
 
-    query = query_return_first_edge;
-    AST **ast = ParseQuery(query, strlen(query), NULL);
-    ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
-    exp_count = array_len(ae);
-    ASSERT_EQ(exp_count, 2);
+    q = query_return_first_edge;
+    actual = build_algebraic_expression(q, &exp_count);
 
-    // Validate first expression.
-    exp = ae[0];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 3);
-    ASSERT_TRUE(exp->edge != NULL);
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 2);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    expected[0] = exp;
+    
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[1] = exp;
 
-    n = QueryGraph_GetNodeByAlias(query_graph, "p");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "f");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);    
-
-    // Validate second expression.
-    exp = ae[1];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 4);
-    ASSERT_TRUE(exp->edge == NULL);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-    ASSERT_EQ(exp->operands[3].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "c");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "e");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
+    compare_algebraic_expressions(actual, expected, 2);
 
     // Clean up.
-    for(int i = 0; i < exp_count; i++) AlgebraicExpression_Free(ae[i]);
-    array_free(ae);
-    AST_Free(ast);
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
 
-    //==============================================================================
+    //==============================================================================================
     //=== MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ev
-    //==============================================================================
-    exp_count = 0;
-    query = query_return_intermidate_edge;
-    ast = ParseQuery(query, strlen(query), NULL);
-    ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
-    exp_count = array_len(ae);
-    ASSERT_EQ(exp_count, 3);
+    //==============================================================================================
+    q = query_return_intermidate_edge;
+    actual = build_algebraic_expression(q, &exp_count);
 
-    // Validate first expression.
-    exp = ae[0];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 3);
-    ASSERT_TRUE(exp->edge == NULL);
-    n = QueryGraph_GetNodeByAlias(query_graph, "p");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "f");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
+    expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 3);
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    expected[0] = exp;
+    
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    expected[1] = exp;
 
-    // Validate second expression.
-    exp = ae[1];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 2);    
-    ASSERT_TRUE(exp->edge != NULL);
-    n = QueryGraph_GetNodeByAlias(query_graph, "c");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[2] = exp;
 
-    // Validate third expression.
-    exp = ae[2];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 2);
-    ASSERT_TRUE(exp->edge == NULL);
-    n = QueryGraph_GetNodeByAlias(query_graph, "e");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
+    compare_algebraic_expressions(actual, expected, 3);
 
     // Clean up.
-    for(int i = 0; i < exp_count; i++) AlgebraicExpression_Free(ae[i]);
-    array_free(ae);
-    AST_Free(ast);
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
 
-    //==============================================================================
+    //==============================================================================================
     //=== MATCH (p:Person)-[ef:friend]->(f:Person)-[ev:visit]->(c:City)-[ew:war]->(e:City) RETURN ew
-    //==============================================================================
-    exp_count = 0;
-    query = query_return_last_edge;
-    ast = ParseQuery(query, strlen(query), NULL);
-    ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
-    exp_count = array_len(ae);
-    ASSERT_EQ(exp_count, 2);
+    //==============================================================================================
+    q = query_return_last_edge;
+    actual = build_algebraic_expression(q, &exp_count);
+    
+    expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 2);
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    expected[0] = exp;
 
-    // Validate first expression.
-    exp = ae[0];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 5);
-    ASSERT_TRUE(exp->edge == NULL);
-    n = QueryGraph_GetNodeByAlias(query_graph, "p");
-    ASSERT_EQ(exp->operands[4].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ef");
-    ASSERT_EQ(exp->operands[3].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "f");
-    ASSERT_EQ(exp->operands[2].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ev");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
-    n = QueryGraph_GetNodeByAlias(query_graph, "c");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[1] = exp;
 
-    // Validate second expression.
-    exp = ae[1];
-    ASSERT_EQ(exp->op, AL_EXP_MUL);
-    ASSERT_EQ(exp->operand_count, 2);
-    ASSERT_TRUE(exp->edge != NULL);
-    n = QueryGraph_GetNodeByAlias(query_graph, "e");
-    ASSERT_EQ(exp->operands[0].operand, n->mat);
-    e = QueryGraph_GetEdgeByAlias(query_graph, "ew");
-    ASSERT_EQ(exp->operands[1].operand, e->mat);
+    compare_algebraic_expressions(actual, expected, 2);
 
     // Clean up.
-    for(int i = 0; i < exp_count; i++) AlgebraicExpression_Free(ae[i]);
-    array_free(ae);
-    AST_Free(ast);
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
+}
+
+TEST_F(AlgebraicExpressionTest, BothDirections) {
+    size_t exp_count = 0;
+    const char *q = "MATCH (p:Person)-[ef:friend]->(f:Person)<-[ev:visit]-(c:City)-[ew:war]->(e:City) RETURN p,e";
+    AlgebraicExpression **actual = build_algebraic_expression(q, &exp_count);
+
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 1);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ev, true, false);
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[0] = exp;
+
+    compare_algebraic_expressions(actual, expected, 1);
+
+    // Clean up.
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
+}
+
+TEST_F(AlgebraicExpressionTest, VariableLength) {
+    size_t exp_count = 0;
+    const char *q = "MATCH (p:Person)-[ef:friend]->(f:Person)-[:visit*1..3]->(c:City)-[ew:war]->(e:City) RETURN p,e";
+    AlgebraicExpression **actual = build_algebraic_expression(q, &exp_count);
+    
+    AlgebraicExpression **expected = (AlgebraicExpression**)malloc(sizeof(AlgebraicExpression*) * 3);
+    AlgebraicExpression *exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_p, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ef, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_f, false, false);
+    expected[0] = exp;
+
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_ev, false, false);
+    expected[1] = exp;
+
+    exp = AlgebraicExpression_Empty();
+    AlgebraicExpression_PrependTerm(exp, mat_c, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_ew, false, false);
+    AlgebraicExpression_PrependTerm(exp, mat_e, false, false);
+    expected[2] = exp;
+
+    compare_algebraic_expressions(actual, expected, 3);
+
+    // Clean up.
+    free_algebraic_expressions(actual, exp_count);
+    free_algebraic_expressions(expected, exp_count);
+    array_free(actual);
 }
 
 TEST_F(AlgebraicExpressionTest, ExpressionExecute) {
-    const char *query = query_no_intermidate_return_nodes;
-    AST **ast = ParseQuery(query, strlen(query), NULL);
-    AlgebraicExpression **ae = AlgebraicExpression_From_QueryGraph(query_graph, ast[0]);
+    size_t exp_count = 0;
+    GraphContext *gc = GraphContext_GetFromTLS();
+    Graph *g = gc->g;
+
+    const char *q = query_no_intermidate_return_nodes;
+    AlgebraicExpression **ae = build_algebraic_expression(q, &exp_count);
 
     GrB_Matrix res;
-    GrB_Matrix_new(&res, GrB_BOOL, Graph_RequiredMatrixDim(g), Graph_RequiredMatrixDim(g));    
+    GrB_Matrix_new(&res, GrB_BOOL, Graph_RequiredMatrixDim(g), Graph_RequiredMatrixDim(g));
 
     AlgebraicExpression *exp = ae[0];
     AlgebraicExpression_Execute(exp, res);
