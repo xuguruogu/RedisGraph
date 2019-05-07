@@ -108,8 +108,6 @@ void _MGraph_Query(void *args) {
 
     CommandCtx_ThreadSafeContextUnlock(qctx);
 
-    ModifyAST(gc, ast);
-
     // Acquire the appropriate lock.
     if(readonly) Graph_AcquireReadLock(gc->g);
     else Graph_WriterEnter(gc->g);  // Single writer.
