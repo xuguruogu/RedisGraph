@@ -38,7 +38,7 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact);
 
 void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast);
 
-void ResultSet_CreateHeader(ResultSet *set, const char **column_names);
+void ResultSet_CreateHeader(ResultSet *set, char **columns);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 

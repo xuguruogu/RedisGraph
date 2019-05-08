@@ -63,10 +63,9 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-void ResultSet_CreateHeader(ResultSet *resultset, const char **column_names) {
+void ResultSet_CreateHeader(ResultSet *resultset, char **column_names) {
     assert(resultset->recordCount == 0);
 
-    resultset->column_names = column_names;
     resultset->column_count = array_len(column_names);
     /* Replay with table header. */
     _ResultSet_ReplayHeader(resultset, column_names);
