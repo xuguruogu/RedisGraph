@@ -63,12 +63,12 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-void ResultSet_CreateHeader(ResultSet *resultset, char **column_names) {
+void ResultSet_CreateHeader(ResultSet *resultset, AR_ExpNode **exps) {
     assert(resultset->recordCount == 0);
 
-    resultset->column_count = array_len(column_names);
+    resultset->column_count = array_len(exps);
     /* Replay with table header. */
-    _ResultSet_ReplayHeader(resultset, column_names);
+    _ResultSet_ReplayHeader(resultset, exps);
 }
 
 // Set the DISTINCT, SKIP, and LIMIT values specified in the query

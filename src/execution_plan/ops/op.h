@@ -71,6 +71,7 @@ struct OpBase {
     struct OpBase **children;   // Child operations.
     int childCount;             // Number of children.
     struct OpBase *parent;      // Parent operations.
+    Record *record_ptr;
 };
 typedef struct OpBase OpBase;
 

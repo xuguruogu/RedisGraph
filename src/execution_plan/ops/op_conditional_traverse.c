@@ -58,7 +58,8 @@ OpBase* NewCondTraverseOp(Graph *g, AlgebraicExpression *ae, uint records_cap) {
 
     traverse->recordsLen = 0;
     traverse->transposed_edge = false;
-    traverse->recordsCap = records_cap;
+    // traverse->recordsCap = records_cap; // TODO re-enable
+    traverse->recordsCap = 1;
     traverse->records = rm_calloc(traverse->recordsCap, sizeof(Record));
     size_t required_dim = Graph_RequiredMatrixDim(g);
     GrB_Matrix_new(&traverse->M, GrB_BOOL, required_dim, traverse->recordsCap);
