@@ -20,6 +20,10 @@ void optimizePlan(GraphContext *gc, ExecutionPlan *plan, AST *ast) {
 
     /* Remove redundant SCAN operations. */
     // reduceScans(plan);
+    
+    /* reduce traversals where both src and dest nodes are already resolved
+     * into an expand into operation. */
+    reduceTraversal(plan);
 
     /* Relocate sort, skip, limit operations. */
     relocateOperations(plan);
