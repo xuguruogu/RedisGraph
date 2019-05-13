@@ -219,7 +219,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
      * Introduce this distinction. */
     OpBase *cartesianProduct = NULL;
     if (match_count > 1) {
-        cartesianProduct = NewCartesianProductOp(AST_RecordLength(ast));
+        cartesianProduct = NewCartesianProductOp();
         Vector_Push(ops, cartesianProduct);
     }
 
@@ -232,7 +232,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         /* If we're dealing with multiple paths (which our validations have guaranteed
          * are disjoint), we'll join them all together with a Cartesian product (full join). */
         if ((cartesianProduct == NULL) && (cypher_ast_pattern_npaths(ast_pattern) > 1)) {
-            cartesianProduct = NewCartesianProductOp(AST_RecordLength(ast));
+            cartesianProduct = NewCartesianProductOp();
             Vector_Push(ops, cartesianProduct);
         }
 
@@ -254,7 +254,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     if(unwind_clause) {
         AST_UnwindContext unwind_ast_ctx = AST_PrepareUnwindOp(ast, unwind_clause);
 
-        OpBase *opUnwind = NewUnwindOp(unwind_ast_ctx.record_len, unwind_ast_ctx.record_idx, unwind_ast_ctx.exps, unwind_ast_ctx.alias);
+        OpBase *opUnwind = NewUnwindOp(unwind_ast_ctx.record_idx, unwind_ast_ctx.exps);
         Vector_Push(ops, opUnwind);
     }
 
@@ -263,8 +263,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         AST_CreateContext create_ast_ctx = AST_PrepareCreateOp(ast, qg);
         OpBase *opCreate = NewCreateOp(&result_set->stats,
                                        create_ast_ctx.nodes_to_create,
-                                       create_ast_ctx.edges_to_create,
-                                       create_ast_ctx.record_len);
+                                       create_ast_ctx.edges_to_create);
         Vector_Push(ops, opCreate);
     }
 
@@ -283,8 +282,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         AST_MergeContext merge_ast_ctx = AST_PrepareMergeOp(ast, merge_clause, qg);
         OpBase *opMerge = NewMergeOp(&result_set->stats,
                                      merge_ast_ctx.nodes_to_merge,
-                                     merge_ast_ctx.edges_to_merge,
-                                     merge_ast_ctx.record_len);
+                                     merge_ast_ctx.edges_to_merge);
         Vector_Push(ops, opMerge);
     }
 
@@ -455,10 +453,6 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         Vector_Free(sub_trees);
     }
 
-    // optimizeSegment(gc, segment);
-
-    segment->record_len = AST_RecordLength(ast);
-
     return segment;
 }
 
@@ -599,14 +593,9 @@ void ExecutionPlanSegmentInit(ExecutionPlanSegment *segment) {
     _ExecutionPlanSegmentInit(segment->root);
 }
 
-Record _ExecutionPlanSegment_Execute(ExecutionPlanSegment *segment, Record projected_record) {
+Record _ExecutionPlanSegment_Execute(ExecutionPlanSegment *segment) {
     OpBase *op = segment->root;
 
-    // if (projected_record == NULL) {
-        // segment->record_being_built = Record_New(segment->record_len);
-    // } else {
-        // segment->record_being_built = projected_record;
-    // }
     Record r = op->consume(op);
 
     return r;
@@ -615,7 +604,6 @@ Record _ExecutionPlanSegment_Execute(ExecutionPlanSegment *segment, Record proje
 ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan) {
     for (uint i = 0; i < plan->segment_count; i ++) {
         ExecutionPlanSegmentInit(plan->segments[i]);
-        // _segmentRecordInit(plan->segments[i]);
     }
 
     bool depleted = false;
@@ -623,7 +611,7 @@ ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan) {
     Record r;
     while (!depleted) {
         ExecutionPlanSegment *last_segment = plan->segments[plan->segment_count - 1];
-        r = _ExecutionPlanSegment_Execute(last_segment, r);
+        r = _ExecutionPlanSegment_Execute(last_segment);
         if (r == NULL) {
             depleted = true;
             break;
