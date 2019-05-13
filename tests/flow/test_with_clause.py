@@ -69,12 +69,12 @@ class WithClauseTest(FlowTestsBase):
                     [10.5]]
         assert actual_result.result_set == expected
 
-        query = """MATCH (a:label_a) WITH a.a_val AS val SKIP 1 LIMIT 1 RETURN val ORDER BY val"""
+        query = """MATCH (a:label_a) WITH a.a_val AS val ORDER BY val SKIP 1 LIMIT 1 RETURN val"""
         actual_result = redis_graph.query(query)
         expected = [['str2']]
         assert actual_result.result_set == expected
 
-        query = """MERGE (a:label_a {a_val: 5}) WITH a.a_val AS val RETURN val ORDER BY val"""
+        query = """MERGE (a:label_a {a_val: 5}) WITH a.a_val AS val ORDER BY val RETURN val"""
         actual_result = redis_graph.query(query)
         expected = [[5]]
         assert actual_result.properties_set == 0
@@ -118,11 +118,12 @@ class WithClauseTest(FlowTestsBase):
         assert actual_result.result_set == expected
 
         # Perform chained arithmetic ops
-        query = """MATCH (a)-[]->(b) WHERE a.a_val > 0 AND b.b_val > 0 WITH a.a_val * 2 + b.b_val AS val RETURN val"""
+        query = """MATCH (a)-[]->(b) WHERE a.a_val > 0 AND b.b_val > 0 WITH a.a_val * 2 + b.b_val AS val ORDER BY val RETURN val"""
         actual_result = redis_graph.query(query)
 
-        expected = [[31.5],
-                    [15]]
+        expected = [['val'],
+                    [15],
+                    ['31.5']]
         assert actual_result.result_set == expected
 
     def test03_with_aggregate_op_read_queries(self):
