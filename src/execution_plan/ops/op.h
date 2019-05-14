@@ -41,10 +41,11 @@ typedef enum {
     OPType_EXPAND_INTO = (1<<20),
     OPType_NODE_BY_ID_SEEK = (1<<21),
     OPType_PROC_CALL = (1<<22),
-    OPType_HANDOFF = (1<<22),
+    OPType_APPLY = (1<<23),
 } OPType;
 
 #define OP_SCAN (OPType_ALL_NODE_SCAN | OPType_NODE_BY_LABEL_SCAN | OPType_INDEX_SCAN | OPType_NODE_BY_ID_SEEK)
+#define OP_TAPS (OP_SCAN | OPType_CREATE | OPType_UNWIND | OPType_MERGE)
 
 typedef enum {
     OP_DEPLETED = 1,
