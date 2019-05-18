@@ -127,7 +127,6 @@ static void _CreateEntities(OpMerge *op, Record r) {
 
 OpBase* NewMergeOp(ResultSetStatistics *stats, NodeCreateCtx *nodes_to_merge, EdgeCreateCtx *edges_to_merge) {
     OpMerge *op_merge = malloc(sizeof(OpMerge));
-    // TODO Why is stats guaranteed to exist?
     op_merge->stats = stats;
     op_merge->gc = GraphContext_GetFromTLS();
     op_merge->matched = false;

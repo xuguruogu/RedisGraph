@@ -28,7 +28,6 @@ OpBase* NewProjectOp(AR_ExpNode **exps, uint *modifies) {
     project->ast = ast;
     project->exps = exps;
     project->exp_count = array_len(exps);
-    project->last_record = (Record)1; // TODO improve - can't be NULL
     project->order_exps = NULL;
     project->order_exp_count = 0;
     project->singleResponse = false;
@@ -101,7 +100,5 @@ OpResult ProjectReset(OpBase *ctx) {
 
 void ProjectFree(OpBase *ctx) {
     OpProject *op = (OpProject*)ctx;
-
-    // for(unsigned short i = 0; i < op->exp_count; i++) AR_EXP_Free(op->exps[i]); // TODO double free
-    array_free(op->exps);
+    if (op->exps) array_free(op->exps);
 }

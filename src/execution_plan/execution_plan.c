@@ -388,7 +388,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
         uint skip = 0;
         uint limit = 0;
         if (skip_clause) skip = AST_ParseIntegerNode(skip_clause);
-        if (limit_clause) limit = AST_ParseIntegerNode(limit_clause); // TODO + skip?
+        if (limit_clause) limit = AST_ParseIntegerNode(limit_clause);
 
         if (segment->order_expressions) {
             int direction = AST_PrepareSortOp(order_clause);

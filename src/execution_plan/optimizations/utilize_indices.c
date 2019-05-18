@@ -4,7 +4,7 @@
 
 /* Reverse an inequality symbol so that indices can support
  * inequalities with right-hand variables. */
-int _reverseOp(AST_Operator op) {
+AST_Operator _reverseOp(AST_Operator op) {
     switch(op) {
         case OP_LT:
             return OP_GT;

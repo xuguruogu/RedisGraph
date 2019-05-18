@@ -312,11 +312,7 @@ void AggregateFree(OpBase *opBase) {
     if(op->expression_classification) rm_free(op->expression_classification);
     if(op->non_aggregated_expressions) array_free(op->non_aggregated_expressions);
 
-    if(op->exps) {
-        // uint exp_count = array_len(op->exps);
-        // for(uint i = 0; i < exp_count; i++) AR_EXP_Free(op->exps[i]);
-        array_free(op->exps);
-    }
+    if(op->exps) array_free(op->exps);
 
     FreeGroupCache(op->groups);
 }

@@ -345,7 +345,7 @@ void AST_BuildAliasMap(AST *ast) {
         // as well as aliases, all of which should be mapped
         if (type == CYPHER_AST_MATCH) {
             // TODO mapping all pattern entities for Record - should add specific required anonymous
-            // entities later.
+            // entities later instead.
             _AST_MapPattern(ast, cypher_ast_match_get_pattern(clause), true);
         } else if (type == CYPHER_AST_MERGE) {
             _AST_MapPath(ast, cypher_ast_merge_get_pattern_path(clause), true);
