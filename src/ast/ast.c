@@ -174,7 +174,7 @@ const cypher_astnode_t* AST_GetClause(const AST *ast, cypher_astnode_type_t clau
 
 /* Collect references to all clauses of the specified type in the query. Since clauses
  * cannot be nested, we only need to check the immediate children of the query node. */
-unsigned int AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches) {
+uint AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches) {
     unsigned int num_found = 0;
     unsigned int num_clauses = cypher_astnode_nchildren(ast->root);
     for (unsigned int i = 0; i < num_clauses; i ++) {

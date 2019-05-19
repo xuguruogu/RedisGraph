@@ -22,19 +22,19 @@ typedef enum {
 } StreamState;
 
 typedef struct {
-    OpBase *root;
-    QueryGraph *query_graph;
-    FT_FilterNode *filter_tree;
-    AR_ExpNode **projections;        // Expressions to be constructed for a WITH or RETURN clause
-    AR_ExpNode **order_expressions;  // Expressions to be constructed for an ORDER clause
-    uint record_len;                 // Length of Record being modified by this segment
+    OpBase *root;                    // Root operation of this specific segment.
+    QueryGraph *query_graph;         // QueryGraph representing all graph entities in this segment.
+    FT_FilterNode *filter_tree;      // FilterTree containing filters to be applied to this segment.
+    AR_ExpNode **projections;        // Expressions to be constructed for a WITH or RETURN clause.
+    AR_ExpNode **order_expressions;  // Expressions to be constructed for an ORDER clause.
+    uint record_len;                 // Length of Record being modified by this segment.
 } ExecutionPlanSegment;
 
 typedef struct {
-    OpBase *root;
+    OpBase *root;                    // Root operation of overall ExecutionPlan.
     ExecutionPlanSegment **segments; // TODO might be able to refactor to remove this element
-    ResultSet *result_set;
-    uint segment_count;
+    ResultSet *result_set;           // ResultSet populated by this query
+    uint segment_count;              // Number of segments in query (remove when possible)
 } ExecutionPlan;
 
 /* execution_plan_modify.c

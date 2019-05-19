@@ -8,6 +8,7 @@
 
 #include "execution_plan.h"
 #include "./ops/ops.h"
+#include "../util/rmalloc.h"
 #include "../util/arr.h"
 #include "../util/vector.h"
 #include "../query_executor.h"
@@ -472,7 +473,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
 // the AST slice's WITH, RETURN, and ORDER clauses
 ExecutionPlanSegment* _PrepareSegment(AST *ast, AR_ExpNode **projections) {
     // Allocate a new segment
-    ExecutionPlanSegment *segment = malloc(sizeof(ExecutionPlanSegment));
+    ExecutionPlanSegment *segment = rm_malloc(sizeof(ExecutionPlanSegment));
 
     if (projections) {
         // We have an array of identifiers provided by a prior WITH clause -
@@ -535,7 +536,7 @@ void _AST_Reset(AST *ast) {
 ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool explain) {
     AST *ast = AST_GetFromTLS();
 
-    ExecutionPlan *plan = malloc(sizeof(ExecutionPlan));
+    ExecutionPlan *plan = rm_malloc(sizeof(ExecutionPlan));
 
     plan->result_set = NULL;
     if(!explain) {
@@ -545,7 +546,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     uint with_clause_count = AST_GetClauseCount(ast, CYPHER_AST_WITH);
     plan->segment_count = with_clause_count + 1;
 
-    plan->segments = malloc(plan->segment_count * sizeof(ExecutionPlanSegment));
+    plan->segments = rm_malloc(plan->segment_count * sizeof(ExecutionPlanSegment));
 
     uint *segment_indices = NULL;
     if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
@@ -641,9 +642,9 @@ void ExecutionPlan_Free(ExecutionPlan *plan) {
     for (uint i = 0; i < plan->segment_count; i ++) {
         ExecutionPlanSegment *segment = plan->segments[i];
         QueryGraph_Free(segment->query_graph);
-        free(segment);
+        rm_free(segment);
     }
-    free(plan->segments);
+    rm_free(plan->segments);
 
-    free(plan);
+    rm_free(plan);
 }

@@ -26,13 +26,13 @@ typedef enum {
 typedef struct AR_ExpNode AR_ExpNode;
 
 typedef struct {
-    const cypher_astnode_t *root;
-    // Extensible array of entities described in MATCH, MERGE, and CREATE clauses
-    AR_ExpNode **defined_entities;
-    TrieMap *entity_map;
-    unsigned int record_length; // TODO can be moved to segment?
-    unsigned int start_offset;    // Left-hand bound of AST clauses to consider
-    unsigned int end_offset;    // Right-hand bound of AST clauses to consider
+    const cypher_astnode_t *root;     // Root element of libcypher-parser AST
+    // Extensible array of entities described in MATCH, MERGE, and CREATE clausesp
+    AR_ExpNode **defined_entities;    // TODO delete if possible
+    TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AR_ExpNodes (TODO replace with record IDs)
+    uint record_length;               // TODO can be moved to segment?
+    uint start_offset;                // Left-hand bound of AST clauses to consider
+    uint end_offset;                  // Right-hand bound of AST clauses to consider
 } AST;
 
 // AST clause validations.
@@ -56,7 +56,7 @@ void AST_ReferredFunctions(const cypher_astnode_t *root, TrieMap *referred_funcs
 // Returns specified clause or NULL.
 const cypher_astnode_t* AST_GetClause(const AST *ast, cypher_astnode_type_t clause_type);
 
-unsigned int AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches);
+uint AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches);
 
 uint* AST_GetClauseIndices(const AST *ast, cypher_astnode_type_t clause_type);
 
@@ -80,7 +80,7 @@ void AST_BuildAliasMap(AST *ast);
 
 // mapping functions
 
-unsigned int AST_GetAliasID(const AST *ast, const char *alias);
+uint AST_GetAliasID(const AST *ast, const char *alias);
 
 void AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, AR_ExpNode *exp);
 
@@ -90,16 +90,16 @@ AR_ExpNode* AST_GetEntity(const AST *ast, AST_IDENTIFIER entity);
 
 AR_ExpNode* AST_GetEntityFromAlias(const AST *ast, const char *alias);
 
-unsigned int AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity);
+uint AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity);
 
 // TODO find better place for record code
-unsigned int AST_RecordLength(const AST *ast);
+uint AST_RecordLength(const AST *ast);
 
-unsigned int AST_AddRecordEntry(AST *ast);
+uint AST_AddRecordEntry(AST *ast);
 
 void AST_RecordAccommodateExpression(AST *ast, AR_ExpNode *exp);
 
-unsigned int AST_AddAnonymousRecordEntry(AST *ast);
+uint AST_AddAnonymousRecordEntry(AST *ast);
 
 AST* AST_GetFromTLS(void);
 

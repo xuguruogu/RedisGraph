@@ -138,11 +138,14 @@ QueryGraph* QueryGraph_New(size_t node_cap, size_t edge_cap) {
 
 void QueryGraph_AddPath(const GraphContext *gc, const AST *ast, QueryGraph *qg, const cypher_astnode_t *path) {
     uint nelems = cypher_ast_pattern_path_nelements(path);
-    /* Introduce nodes first. */
+    /* Introduce nodes first. Nodes are positioned at every even offset
+     * into the path (0, 2, ...) */
     for (uint i = 0; i < nelems; i += 2) {
         const cypher_astnode_t *ast_node = cypher_ast_pattern_path_get_element(path, i);
         _BuildQueryGraphAddNode(gc, ast, ast_node, qg);
     }
+
+    /* Every odd offset corresponds to an edge in a path. */
     for (uint i = 1; i < nelems; i += 2) {
         // TODO still need to introduce nodes first? not doing that would simplify this logic
         const cypher_astnode_t *l_entity = cypher_ast_pattern_path_get_element(path, i - 1);
@@ -166,6 +169,8 @@ QueryGraph* BuildQueryGraph(const GraphContext *gc, const AST *ast) {
     // If so, re-introduce similar logic.
     size_t node_count;
     size_t edge_count;
+    // Estimating number of nodes and edges required to accommodate QueryGraph;
+    // will be extended as necessary
     node_count = edge_count = AST_RecordLength(ast);
     // _Determine_Graph_Size(old_ast, &node_count, &edge_count);
     QueryGraph *qg = QueryGraph_New(node_count, edge_count);
