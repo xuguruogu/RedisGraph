@@ -48,6 +48,14 @@ typedef struct FT_FilterNode FT_FilterNode;
 
 int IsNodePredicate(const FT_FilterNode *node);
 
+FT_FilterNode *AppendLeftChild(FT_FilterNode *root, FT_FilterNode *child);
+
+FT_FilterNode *AppendRightChild(FT_FilterNode *root, FT_FilterNode *child);
+
+FT_FilterNode* FilterTree_CreatePredicateFilter(AST_Operator op, AR_ExpNode *lhs, AR_ExpNode *rhs);
+
+FT_FilterNode* FilterTree_CreateConditionFilter(AST_Operator op);
+
 /* Runs val through the filter tree. */
 int FilterTree_applyFilters(const FT_FilterNode* root, const Record r);
 

@@ -2,51 +2,49 @@
 #include "ast_shared.h"
 #include "../util/arr.h"
 
-FT_FilterNode* CreateCondFilterNode(AST_Operator op) {
-    FT_FilterNode* filterNode = (FT_FilterNode*)malloc(sizeof(FT_FilterNode));
-    filterNode->t = FT_N_COND;
-    filterNode->cond.op = op;
-    return filterNode;
-}
-
-FT_FilterNode *AppendLeftChild(FT_FilterNode *root, FT_FilterNode *child) {
-    root->cond.left = child;
-    return root->cond.left;
-}
-
-FT_FilterNode *AppendRightChild(FT_FilterNode *root, FT_FilterNode *child) {
-    root->cond.right = child;
-    return root->cond.right;
-}
+// Forward declaration
+FT_FilterNode* _FilterNode_FromAST(const AST *ast, const cypher_astnode_t *expr);
 
 FT_FilterNode* _CreatePredicateFilterNode(const AST *ast, AST_Operator op, const cypher_astnode_t *lhs, const cypher_astnode_t *rhs) {
-    FT_FilterNode *filterNode = malloc(sizeof(FT_FilterNode));
-    filterNode->t = FT_N_PRED;
-    filterNode->pred.op = op;
-    filterNode->pred.lhs = AR_EXP_FromExpression(ast, lhs);
-    filterNode->pred.rhs = AR_EXP_FromExpression(ast, rhs);
-    return filterNode;
+    return FilterTree_CreatePredicateFilter(op, AR_EXP_FromExpression(ast, lhs), AR_EXP_FromExpression(ast, rhs));
 }
 
-// Only used for inlined property filters
-FT_FilterNode* _CreatePredicateFilterNodeFromExps(AST_Operator op, AR_ExpNode *lhs, AR_ExpNode *rhs) {
-    FT_FilterNode *filterNode = malloc(sizeof(FT_FilterNode));
-    filterNode->t = FT_N_PRED;
-    filterNode->pred.op = op;
-    filterNode->pred.lhs = lhs;
-    filterNode->pred.rhs = rhs;
-    return filterNode;
+void _FT_Append(FT_FilterNode **root_ptr, FT_FilterNode *child) {
+    assert(child);
+
+    FT_FilterNode *root = *root_ptr;
+    // If the tree is uninitialized, its root is the child
+    if (root == NULL) {
+        *root_ptr = child;
+        return;
+    }
+
+    if (root->t == FT_N_COND) {
+
+        if (root->cond.left == NULL) {
+            AppendLeftChild(root, child);
+            return;
+        }
+        if (root->cond.right == NULL) {
+            AppendRightChild(root, child);
+            return;
+        }
+    }
+
+    FT_FilterNode *new_root = FilterTree_CreateConditionFilter(OP_AND);
+    AppendLeftChild(new_root, root);
+    AppendRightChild(new_root, child);
+    *root_ptr = new_root;
 }
 
-
-FT_FilterNode* _CreateFilterNode(const AST *ast, AST_Operator op, const cypher_astnode_t *lhs, const cypher_astnode_t *rhs) {
+FT_FilterNode* _CreateFilterSubtree(const AST *ast, AST_Operator op, const cypher_astnode_t *lhs, const cypher_astnode_t *rhs) {
     FT_FilterNode *filter = NULL;
     switch (op) {
         case OP_OR:
         case OP_AND:
-            filter = CreateCondFilterNode(op);
-            AppendLeftChild(filter, FilterNode_FromAST(ast, lhs));
-            AppendRightChild(filter, FilterNode_FromAST(ast, rhs));
+            filter = FilterTree_CreateConditionFilter(op);
+            AppendLeftChild(filter, _FilterNode_FromAST(ast, lhs));
+            AppendRightChild(filter, _FilterNode_FromAST(ast, rhs));
             return filter;
         case OP_EQUAL:
         case OP_NEQUAL:
@@ -60,38 +58,9 @@ FT_FilterNode* _CreateFilterNode(const AST *ast, AST_Operator op, const cypher_a
     }
 }
 
-void FT_Append(FT_FilterNode **root_ptr, FT_FilterNode *child) {
-    assert(child);
-
-    FT_FilterNode *root = *root_ptr;
-    // If the tree is uninitialized, its root is the child
-    if (root == NULL) {
-        *root_ptr = child;
-        return;
-    }
-
-    // Promote predicate node to AND condition filter
-    if (root->t == FT_N_PRED) {
-        FT_FilterNode *new_root = CreateCondFilterNode(OP_AND);
-        AppendLeftChild(new_root, root);
-        AppendRightChild(new_root, child);
-        *root_ptr = new_root;
-        return;
-    }
-
-    if (root->cond.left == NULL) {
-        AppendLeftChild(root, child);
-    } else if (root->cond.right == NULL) {
-        AppendRightChild(root, child);
-    } else {
-        FT_FilterNode *new_cond = CreateCondFilterNode(OP_AND);
-        AppendLeftChild(new_cond, root);
-        AppendRightChild(new_cond, child);
-        *root_ptr = new_cond;
-    }
-}
-
 // AND, OR, XOR (others?)
+/* WHERE (condition) AND (condition),
+ * WHERE a.val = b.val */
 FT_FilterNode* _convertBinaryOperator(const AST *ast, const cypher_astnode_t *op_node) {
     const cypher_operator_t *operator = cypher_ast_binary_operator_get_operator(op_node);
     // Arguments are of type CYPHER_AST_EXPRESSION
@@ -100,12 +69,13 @@ FT_FilterNode* _convertBinaryOperator(const AST *ast, const cypher_astnode_t *op
 
     AST_Operator op = AST_ConvertOperatorNode(operator);
 
-    return _CreateFilterNode(ast, op, lhs, rhs);
+    return _CreateFilterSubtree(ast, op, lhs, rhs);
 }
 
 /* A comparison node contains two arrays - one of operators, and one of expressions.
  * Most comparisons will only have one operator and two expressions, but Cypher
- * allows more complex formulations like "x < y <= z". */
+ * allows more complex formulations like "x < y <= z".
+ * A comparison takes a form such as "WHERE a.val < y.val". */
 FT_FilterNode* _convertComparison(const AST *ast, const cypher_astnode_t *comparison_node) {
     unsigned int nelems = cypher_ast_comparison_get_length(comparison_node);
     assert(nelems == 1); // TODO tmp, but may require modifying tree formation.
@@ -154,14 +124,25 @@ FT_FilterNode* _convertInlinedProperties(AST *ast, const cypher_astnode_t *entit
          * Can we use this to handle escape characters or something? How does it work? */
         // Inlined properties can only be scalars right now
         assert(rhs->operand.type == AR_EXP_CONSTANT && "non-scalar inlined property - add handling for this?");
-        // FT_FilterNode *t = _CreatePredicateFilterNode(ast, OP_EQUAL, lhs, rhs);
-        FT_FilterNode *t = _CreatePredicateFilterNodeFromExps(OP_EQUAL, lhs, rhs);
-        FT_Append(&root, t);
+        FT_FilterNode *t = FilterTree_CreatePredicateFilter(OP_EQUAL, lhs, rhs);
+        _FT_Append(&root, t);
     }
     return root;
 }
 
-void _collectFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t *entity) {
+FT_FilterNode* _FilterNode_FromAST(const AST *ast, const cypher_astnode_t *expr) {
+    assert(expr);
+    cypher_astnode_type_t type = cypher_astnode_type(expr);
+    if (type == CYPHER_AST_BINARY_OPERATOR) {
+        return _convertBinaryOperator(ast, expr);
+    } else if (type == CYPHER_AST_COMPARISON) {
+        return _convertComparison(ast, expr);
+    }
+    assert(false);
+    return NULL;
+}
+
+void _AST_ConvertFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t *entity) {
     if (!entity) return;
 
     cypher_astnode_type_t type = cypher_astnode_type(entity);
@@ -184,37 +165,25 @@ void _collectFilters(AST *ast, FT_FilterNode **root, const cypher_astnode_t *ent
         for(unsigned int i = 0; i < child_count; i++) {
             const cypher_astnode_t *child = cypher_astnode_get_child(entity, i);
             // Recursively continue searching
-            _collectFilters(ast, root, child);
+            _AST_ConvertFilters(ast, root, child);
         }
     }
-    if (node) FT_Append(root, node);
-}
-
-FT_FilterNode* FilterNode_FromAST(const AST *ast, const cypher_astnode_t *expr) {
-    assert(expr);
-    cypher_astnode_type_t type = cypher_astnode_type(expr);
-    if (type == CYPHER_AST_BINARY_OPERATOR) {
-        return _convertBinaryOperator(ast, expr);
-    } else if (type == CYPHER_AST_COMPARISON) {
-        return _convertComparison(ast, expr);
-    }
-    assert(false);
-    return NULL;
+    if (node) _FT_Append(root, node);
 }
 
 FT_FilterNode* AST_BuildFilterTree(AST *ast) {
-    FT_FilterNode *filter_tree = NULL; 
+    FT_FilterNode *filter_tree = NULL;
     const cypher_astnode_t **match_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MATCH);
     uint match_count = array_len(match_clauses);
     for (unsigned int i = 0; i < match_count; i ++) {
-        _collectFilters(ast, &filter_tree, match_clauses[i]);
+        _AST_ConvertFilters(ast, &filter_tree, match_clauses[i]);
     }
     array_free(match_clauses);
 
     const cypher_astnode_t **merge_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MERGE);
     uint merge_count = array_len(merge_clauses);
     for (unsigned int i = 0; i < merge_count; i ++) {
-        _collectFilters(ast, &filter_tree, merge_clauses[i]);
+        _AST_ConvertFilters(ast, &filter_tree, merge_clauses[i]);
     }
     array_free(merge_clauses);
 

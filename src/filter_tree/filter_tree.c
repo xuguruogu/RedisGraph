@@ -10,11 +10,37 @@
 #include "../query_executor.h"
 #include "../util/arr.h"
 
-FT_FilterNode* LeftChild(const FT_FilterNode *node) { return node->cond.left; }
-FT_FilterNode* RightChild(const FT_FilterNode *node) { return node->cond.right; }
+static inline FT_FilterNode* LeftChild(const FT_FilterNode *node) { return node->cond.left; }
+static inline FT_FilterNode* RightChild(const FT_FilterNode *node) { return node->cond.right; }
 
 int IsNodePredicate(const FT_FilterNode *node) {
     return node->t == FT_N_PRED;
+}
+
+FT_FilterNode *AppendLeftChild(FT_FilterNode *root, FT_FilterNode *child) {
+    root->cond.left = child;
+    return root->cond.left;
+}
+
+FT_FilterNode *AppendRightChild(FT_FilterNode *root, FT_FilterNode *child) {
+    root->cond.right = child;
+    return root->cond.right;
+}
+
+FT_FilterNode* FilterTree_CreatePredicateFilter(AST_Operator op, AR_ExpNode *lhs, AR_ExpNode *rhs) {
+    FT_FilterNode *filterNode = malloc(sizeof(FT_FilterNode));
+    filterNode->t = FT_N_PRED;
+    filterNode->pred.op = op;
+    filterNode->pred.lhs = lhs;
+    filterNode->pred.rhs = rhs;
+    return filterNode;
+}
+
+FT_FilterNode* FilterTree_CreateConditionFilter(AST_Operator op) {
+    FT_FilterNode* filterNode = (FT_FilterNode*)malloc(sizeof(FT_FilterNode));
+    filterNode->t = FT_N_COND;
+    filterNode->cond.op = op;
+    return filterNode;
 }
 
 void _FilterTree_SubTrees(const FT_FilterNode *root, Vector *sub_trees) {

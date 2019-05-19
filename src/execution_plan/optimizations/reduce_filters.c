@@ -23,7 +23,7 @@ void _reduceFilter(OpBase *op) {
         Filter *childFilter = (Filter*)child;
 
         /* Create a new root for the tree, merge trees using an AND. */
-        FT_FilterNode *root = CreateCondFilterNode(OP_AND);
+        FT_FilterNode *root = FilterTree_CreateConditionFilter(OP_AND);
         AppendLeftChild(root, tree);
         AppendRightChild(root, childFilter->filterTree);
         tree = root;
