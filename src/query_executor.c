@@ -55,6 +55,8 @@ AR_ExpNode** _ExpandCollapsedNodes(AST *ast, AR_ExpNode **return_expressions) {
 
             /* Return clause doesn't contains entity's label,
              * Find collapsed entity's label. */
+            // TODO fails for reference expressions:
+            // MATCH (a) WITH a RETURN a
             const cypher_astnode_t *ast_entity = exp->operand.variadic.ast_ref;
             uint idx = (exp->record_idx != NOT_IN_RECORD) ? exp->record_idx : exp->operand.variadic.entity_alias_idx;
             AR_ExpNode *collapsed_entity = ast->defined_entities[idx];
@@ -427,10 +429,8 @@ AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_cla
         char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
-            // TODO ?
             // The projection either has an alias (AS) or is a function call.
             alias = (char*)cypher_ast_identifier_get_name(alias_node);
-            // TODO can the alias have appeared in an earlier clause?
 
             // Associate alias with the expression
             AST_MapAlias(ast, alias, exp);

@@ -68,6 +68,7 @@ typedef struct {
         struct {
             const char *entity_alias;
             int entity_alias_idx;
+            // TODO extend AR_OperandNodeType to have a property specifier type
             const char *entity_prop;
             SchemaType entity_type;
             Attribute_ID entity_prop_idx;
@@ -90,7 +91,7 @@ struct AR_ExpNode {
     const char *alias;
     AR_ExpNodeType type;
     uint record_idx;
-    bool collapsed; // TODO refactor, add type for just looking up a record index / alias
+    bool collapsed; // TODO remove upon deleting collapsed entity logic
 };
 
 /* Mathematical functions - numeric */

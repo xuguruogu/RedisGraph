@@ -66,10 +66,8 @@ void _mapWith(AST *ast, const cypher_astnode_t *with_clause) {
         char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
-            // TODO ?
             // The projection either has an alias (AS) or is a function call.
             alias = (char*)cypher_ast_identifier_get_name(alias_node);
-            // TODO can the alias have appeared in an earlier clause?
 
             // Associate alias with the expression
             AST_MapAlias(ast, alias, exp);
@@ -84,7 +82,7 @@ void _mapWith(AST *ast, const cypher_astnode_t *with_clause) {
 
 void _mapUnwind(AST *ast, const cypher_astnode_t *unwind_clause) {
     const cypher_astnode_t *alias_node = cypher_ast_unwind_get_alias(unwind_clause);
-    char *alias = (char*)cypher_ast_identifier_get_name(cypher_ast_unwind_get_alias(unwind_clause));
+    const char *alias = cypher_ast_identifier_get_name(cypher_ast_unwind_get_alias(unwind_clause));
 
     const cypher_astnode_t *ast_exp = cypher_ast_unwind_get_expression(unwind_clause);
     uint id = AST_AddRecordEntry(ast);
@@ -355,7 +353,8 @@ void AST_BuildAliasMap(AST *ast) {
         } else if (type == CYPHER_AST_UNWIND) {
             _mapUnwind(ast, clause);
         } else if (type == CYPHER_AST_WITH) {
-            _mapWith(ast, clause);
+            // TODO Should be handled by AST_BuildWithExpressions, verify
+            // _mapWith(ast, clause);
         }
     }
 }
