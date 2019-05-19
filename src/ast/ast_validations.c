@@ -62,9 +62,7 @@ static void _AST_GetWithAliases(const cypher_astnode_t *node, TrieMap *aliases) 
 
 // UNWIND and WITH also form aliases, but don't need special handling for us yet.
 static void _AST_GetReturnAliases(const cypher_astnode_t *node, TrieMap *aliases) {
-    if (!node) return;
-    if(cypher_astnode_type(node) != CYPHER_AST_RETURN) return;
-    assert(aliases);
+    assert(node && aliases && cypher_astnode_type(node) == CYPHER_AST_RETURN);
 
     int num_return_projections = cypher_ast_return_nprojections(node);
     if (num_return_projections == 0) return;
@@ -269,8 +267,6 @@ static AST_Validation _Validate_MATCH_Clause(const AST *ast, char **reason) {
     bool include_aggregates = false;
     res = _AST_ValidateReferredFunctions(referred_funcs, reason, include_aggregates);
 
-    if(res == AST_INVALID) goto cleanup;
-
 cleanup:
     TrieMap_Free(referred_funcs, TrieMap_NOP_CB);
     TrieMap_Free(identifiers, TrieMap_NOP_CB);
@@ -363,7 +359,7 @@ static void _AST_GetDefinedIdentifiers(const cypher_astnode_t *node, TrieMap *id
 static void _AST_GetReferredIdentifiers(const cypher_astnode_t *node, TrieMap *identifiers) {
     if (!node) return;
     cypher_astnode_type_t type = cypher_astnode_type(node);
-    if (type == CYPHER_AST_SET || type == CYPHER_AST_RETURN || type == CYPHER_AST_DELETE || type == CYPHER_AST_UNWIND || type == CYPHER_AST_WITH) {
+    if (type == CYPHER_AST_SET || type == CYPHER_AST_RETURN || type == CYPHER_AST_DELETE || type == CYPHER_AST_WITH) {
         _AST_GetIdentifiers(node, identifiers);
     } else {
         unsigned int child_count = cypher_astnode_nchildren(node);

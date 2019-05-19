@@ -478,7 +478,7 @@ ExecutionPlanSegment* _PrepareSegment(AST *ast, AR_ExpNode **projections) {
         // We have an array of identifiers provided by a prior WITH clause -
         // these will correspond to our first Record entities
         uint projection_count = array_len(projections);
-        for (uint i = 0; i < projection_count; i ++) {
+        for (uint i = 0; i < projection_count; i++) {
             // TODO add interface
             AR_ExpNode *projection = projections[i];
             uint record_idx = AST_AddRecordEntry(ast);
@@ -547,14 +547,15 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
 
     plan->segments = malloc(plan->segment_count * sizeof(ExecutionPlanSegment));
 
-    uint *segment_indices;
+    uint *segment_indices = NULL;
     if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
 
+    uint i;
+    OpBase *prev_op = NULL;
     ExecutionPlanSegment *segment;
     AR_ExpNode **input_projections = NULL;
-    OpBase *prev_op = NULL;
-    uint i;
-    for (i = 0; i < with_clause_count; i ++) {
+
+    for (i = 0; i < with_clause_count; i++) {
         ast->end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
         segment = _PrepareSegment(ast, input_projections);
         plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, segment, prev_op);
