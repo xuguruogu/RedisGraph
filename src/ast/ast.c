@@ -234,9 +234,27 @@ const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result) {
     return cypher_ast_statement_get_body(statement);
 }
 
+const cypher_astnode_t* _new_ast(const cypher_astnode_t *orig, uint start, uint end) {
+    uint n = end - start;
+    cypher_astnode_t *clauses[n];
+    for (uint i = 0; i < n; i ++) {
+        clauses[i] = (cypher_astnode_t*)cypher_ast_query_get_clause(orig, i + start);
+    }
+    struct cypher_input_range range;
+    // const cypher_astnode_t *ast = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, NULL, 0, range);
+    const cypher_astnode_t *ast = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, clauses, n, range);
+
+    return ast;
+}
 AST* AST_Build(cypher_parse_result_t *parse_result) {
     AST *ast = rm_malloc(sizeof(AST));
-    ast->root = AST_GetBody(parse_result);
+    const cypher_astnode_t *root = AST_GetBody(parse_result);
+    if (cypher_astnode_type(root) == CYPHER_AST_QUERY) {
+        uint n = cypher_ast_query_nclauses(root);
+        ast->root = _new_ast(root, 0, n);
+    } else {
+        ast->root = root;
+    }
     assert(ast->root);
     ast->record_length = 0;
     ast->entity_map = NULL;
