@@ -31,8 +31,6 @@ typedef struct {
     AR_ExpNode **defined_entities;    // TODO delete if possible
     TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AR_ExpNodes (TODO replace with record IDs)
     uint record_length;               // TODO can be moved to segment?
-    uint start_offset;                // Left-hand bound of AST clauses to consider
-    uint end_offset;                  // Right-hand bound of AST clauses to consider
 } AST;
 
 // AST clause validations.
@@ -69,6 +67,8 @@ const cypher_astnode_t** AST_CollectReferencesInRange(const AST *ast, cypher_ast
 const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result);
 
 AST* AST_Build(cypher_parse_result_t *parse_result);
+
+AST* AST_NewSegment(AST *master_ast, uint start_offset, uint end_offset);
 
 long AST_ParseIntegerNode(const cypher_astnode_t *int_node);
 

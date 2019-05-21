@@ -93,8 +93,10 @@ void _mapUnwind(AST *ast, const cypher_astnode_t *unwind_clause) {
 }
 
 bool AST_ReadOnly(const cypher_astnode_t *root) {
-    unsigned int num_clauses = cypher_astnode_nchildren(root);
-    for (unsigned int i = 0; i < num_clauses; i ++) {
+    // Iterate over children rather than clauses, as the root is not
+    // guaranteed to be a query.
+    uint num_children = cypher_astnode_nchildren(root);
+    for (unsigned int i = 0; i < num_children; i ++) {
         const cypher_astnode_t *child = cypher_astnode_get_child(root, i);
         cypher_astnode_type_t type = cypher_astnode_type(child);
         if(type == CYPHER_AST_CREATE ||
@@ -164,8 +166,9 @@ void AST_ReferredFunctions(const cypher_astnode_t *root, TrieMap *referred_funcs
 
 // Retrieve the first instance of the specified clause in range, if any.
 const cypher_astnode_t* AST_GetClause(const AST *ast, cypher_astnode_type_t clause_type) {
-    for (unsigned int i = ast->start_offset; i < ast->end_offset; i ++) {
-        const cypher_astnode_t *child = cypher_astnode_get_child(ast->root, i);
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
+    for (uint i = 0; i < clause_count; i ++) {
+        const cypher_astnode_t *child = cypher_ast_query_get_clause(ast->root, i);
         if (cypher_astnode_type(child) == clause_type) return child;
     }
 
@@ -176,9 +179,9 @@ const cypher_astnode_t* AST_GetClause(const AST *ast, cypher_astnode_type_t clau
  * cannot be nested, we only need to check the immediate children of the query node. */
 uint AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, const cypher_astnode_t **matches) {
     unsigned int num_found = 0;
-    unsigned int num_clauses = cypher_astnode_nchildren(ast->root);
-    for (unsigned int i = 0; i < num_clauses; i ++) {
-        const cypher_astnode_t *child = cypher_astnode_get_child(ast->root, i);
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
+    for (unsigned int i = 0; i < clause_count; i ++) {
+        const cypher_astnode_t *child = cypher_ast_query_get_clause(ast->root, i);
         if (cypher_astnode_type(child) != clause_type) continue;
 
         matches[num_found] = child;
@@ -189,9 +192,9 @@ uint AST_GetTopLevelClauses(const AST *ast, cypher_astnode_type_t clause_type, c
 
 uint* AST_GetClauseIndices(const AST *ast, cypher_astnode_type_t clause_type) {
     uint *clause_indices = array_new(uint, 0);
-    unsigned int num_clauses = cypher_astnode_nchildren(ast->root);
-    for (unsigned int i = 0; i < num_clauses; i ++) {
-        if (cypher_astnode_type(cypher_astnode_get_child(ast->root, i)) == clause_type) {
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
+    for (unsigned int i = 0; i < clause_count; i ++) {
+        if (cypher_astnode_type(cypher_ast_query_get_clause(ast->root, i)) == clause_type) {
             clause_indices = array_append(clause_indices, i);
         }
     }
@@ -199,10 +202,10 @@ uint* AST_GetClauseIndices(const AST *ast, cypher_astnode_type_t clause_type) {
 }
 
 uint AST_GetClauseCount(const AST *ast, cypher_astnode_type_t clause_type) {
-    unsigned int num_clauses = cypher_astnode_nchildren(ast->root);
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
     unsigned int num_found = 0;
-    for (unsigned int i = 0; i < num_clauses; i ++) {
-        const cypher_astnode_t *child = cypher_astnode_get_child(ast->root, i);
+    for (unsigned int i = 0; i < clause_count; i ++) {
+        const cypher_astnode_t *child = cypher_ast_query_get_clause(ast->root, i);
         if (cypher_astnode_type(child) == clause_type) num_found ++;
 
     }
@@ -217,8 +220,9 @@ uint AST_NumClauses(const AST *ast) {
 const cypher_astnode_t** AST_CollectReferencesInRange(const AST *ast, cypher_astnode_type_t type) {
     const cypher_astnode_t **found = array_new(const cypher_astnode_t *, 0);
 
-    for (uint i = ast->start_offset; i < ast->end_offset; i ++) {
-        const cypher_astnode_t *child = cypher_astnode_get_child(ast->root, i);
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
+    for (uint i = 0; i < clause_count; i ++) {
+        const cypher_astnode_t *child = cypher_ast_query_get_clause(ast->root, i);
         if (cypher_astnode_type(child) != type) continue;
 
         found = array_append(found, child);
@@ -234,33 +238,36 @@ const cypher_astnode_t* AST_GetBody(const cypher_parse_result_t *result) {
     return cypher_ast_statement_get_body(statement);
 }
 
-const cypher_astnode_t* _new_ast(const cypher_astnode_t *orig, uint start, uint end) {
-    uint n = end - start;
-    cypher_astnode_t *clauses[n];
-    for (uint i = 0; i < n; i ++) {
-        clauses[i] = (cypher_astnode_t*)cypher_ast_query_get_clause(orig, i + start);
-    }
-    struct cypher_input_range range;
-    // const cypher_astnode_t *ast = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, NULL, 0, range);
-    const cypher_astnode_t *ast = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, clauses, n, range);
-
-    return ast;
-}
 AST* AST_Build(cypher_parse_result_t *parse_result) {
     AST *ast = rm_malloc(sizeof(AST));
-    const cypher_astnode_t *root = AST_GetBody(parse_result);
-    if (cypher_astnode_type(root) == CYPHER_AST_QUERY) {
-        uint n = cypher_ast_query_nclauses(root);
-        ast->root = _new_ast(root, 0, n);
-    } else {
-        ast->root = root;
-    }
+    ast->root = AST_GetBody(parse_result);
     assert(ast->root);
     ast->record_length = 0;
     ast->entity_map = NULL;
     ast->defined_entities = NULL;
-    ast->start_offset = 0;
-    ast->end_offset = cypher_astnode_nchildren(ast->root);
+
+    return ast;
+}
+
+AST* AST_NewSegment(AST *master_ast, uint start_offset, uint end_offset) {
+    AST *ast = rm_malloc(sizeof(AST));
+
+    uint n = end_offset - start_offset;
+
+    cypher_astnode_t *clauses[n];
+    for (uint i = 0; i < n; i ++) {
+        clauses[i] = (cypher_astnode_t*)cypher_ast_query_get_clause(master_ast->root, i + start_offset);
+    }
+    // TODO warning - 'range' causes failures when 0-initialized.
+    // Revisit to determine safety of this instantiation.
+    struct cypher_input_range range;
+    ast->root = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, NULL, 0, range);
+    // ast->root = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, clauses, n, range);
+
+    pthread_setspecific(_tlsASTKey, ast); // TODO I don't know if I like this
+    ast->record_length = 0;
+    ast->entity_map = NewTrieMap();
+    ast->defined_entities = array_new(AR_ExpNode*, 1);
 
     return ast;
 }
@@ -353,9 +360,10 @@ void AST_BuildAliasMap(AST *ast) {
     if (ast->entity_map == NULL) ast->entity_map = NewTrieMap();
     if (ast->defined_entities == NULL) ast->defined_entities = array_new(AR_ExpNode*, 1);
 
-    // Check every clause in the given range
-    for (uint i = ast->start_offset; i < ast->end_offset; i ++) {
-        const cypher_astnode_t *clause = cypher_astnode_get_child(ast->root, i);
+    // Check every clause in this AST segment
+    uint clause_count = cypher_ast_query_nclauses(ast->root);
+    for (uint i = 0; i < clause_count; i ++) {
+        const cypher_astnode_t *clause = cypher_ast_query_get_clause(ast->root, i);
         cypher_astnode_type_t type = cypher_astnode_type(clause);
         // MATCH, MERGE, and CREATE operations may define node and edge patterns
         // as well as aliases, all of which should be mapped

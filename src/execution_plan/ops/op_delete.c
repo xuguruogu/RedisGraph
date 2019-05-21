@@ -51,8 +51,8 @@ void _DeleteEntities(OpDelete *op) {
     /* Release lock. */
     Graph_ReleaseLock(g);
 
-    if(op->result_set) op->result_set->stats.nodes_deleted += node_deleted;
-    if(op->result_set) op->result_set->stats.relationships_deleted += relationships_deleted;
+    if(op->stats) op->stats->nodes_deleted += node_deleted;
+    if(op->stats) op->stats->relationships_deleted += relationships_deleted;
 }
 
 OpBase* NewDeleteOp(uint *nodes_ref, uint *edges_ref, ResultSetStatistics *stats) {

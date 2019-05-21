@@ -515,23 +515,24 @@ ExecutionPlanSegment* _PrepareSegment(AST *ast, AR_ExpNode **projections) {
     return segment;
 }
 
-void _AST_Reset(AST *ast) {
+// TODO same as AST_Free, but doesn't free defined entities
+void _AST_Free(AST *ast) {
     if (ast->defined_entities) {
         uint len = array_len(ast->defined_entities);
         for (uint i = 0; i < len; i ++) {
             // TODO leaks on entities that are not handed off
             // AR_EXP_Free(ast->defined_entities[i]);
         }
-        array_clear(ast->defined_entities);
+        array_free(ast->defined_entities);
     } else {
         ast->defined_entities = array_new(AR_ExpNode*, 1);
     }
 
     if (ast->entity_map) TrieMap_Free(ast->entity_map, TrieMap_NOP_CB);
-    ast->entity_map = NewTrieMap();
-
-    ast->record_length = 0;
+    // TODO probably a memory leak on ast->root
+    rm_free(ast);
 }
+
 
 ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool explain) {
     AST *ast = AST_GetFromTLS();
@@ -551,30 +552,44 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     uint *segment_indices = NULL;
     if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
 
-    uint i;
+    uint i = 0;
+    uint end_offset;
+    uint start_offset = 0;
     OpBase *prev_op = NULL;
     ExecutionPlanSegment *segment;
     AR_ExpNode **input_projections = NULL;
 
-    for (i = 0; i < with_clause_count; i++) {
-        ast->end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
-        segment = _PrepareSegment(ast, input_projections);
-        plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, segment, prev_op);
-        _AST_Reset(ast); // Free and NULL-set all AST constructions scoped to this segment
-        // Store the expressions constructed by this segment's WITH projection to pass into the *next* segment
-        prev_op = segment->root;
-        input_projections = plan->segments[i]->projections;
-        ast->start_offset = ast->end_offset;
+    // The original AST does not need to be modified if our query only has one segment
+    AST *ast_segment = ast;
+    if (with_clause_count > 0) {
+        for (i = 0; i < with_clause_count; i++) {
+            end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
+            ast_segment = AST_NewSegment(ast, start_offset, end_offset);
+            segment = _PrepareSegment(ast_segment, input_projections);
+            plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
+            _AST_Free(ast_segment); // Free all AST constructions scoped to this segment
+            // Store the expressions constructed by this segment's WITH projection to pass into the *next* segment
+            prev_op = segment->root;
+            input_projections = plan->segments[i]->projections;
+            start_offset = end_offset;
+        }
+        // Prepare the last AST segment
+        end_offset = cypher_astnode_nchildren(ast->root);
+        ast_segment = AST_NewSegment(ast, start_offset, end_offset);
     }
 
-    ast->end_offset = AST_NumClauses(ast);
-    segment = _PrepareSegment(ast, input_projections);
+    segment = _PrepareSegment(ast_segment, input_projections);
     if (plan->result_set) ResultSet_CreateHeader(plan->result_set, segment->projections);
-    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, segment, prev_op);
+    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
 
     plan->root = segment->root;
 
     optimizePlan(gc, plan);
+
+    if (ast_segment != ast) {
+        _AST_Free(ast_segment);
+    }
+    // _AST_Free(ast);
 
     return plan;
 }
