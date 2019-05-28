@@ -141,20 +141,12 @@ int ResultSet_AddRecord(ResultSet *set, Record r) {
 }
 
 void ResultSet_Replay(ResultSet* set) {
-<<<<<<< HEAD
     // If we have emitted records, set the number of elements in the
     // preceding array
     if (set->header) {
         size_t resultset_size = set->recordCount;
         RedisModule_ReplySetArrayLength(set->ctx, resultset_size);
     }
-=======
-    // The resultset size is 1 (for the header) + number of records
-    int has_header = set->column_count > 0;
-    size_t resultset_size = set->recordCount + has_header;
-
-    RedisModule_ReplySetArrayLength(set->ctx, resultset_size);
->>>>>>> Fixes surrounding tests
     _ResultSet_ReplayStats(set->ctx, set);
 }
 
