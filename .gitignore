@@ -52,3 +52,8 @@ deps/GraphBLAS/Config/GraphBLAS.h.tmp
 *.xml
 *.iml
 *.d
+
+
+.idea/
+cmake-build-debug/
+cmake-build-release/
