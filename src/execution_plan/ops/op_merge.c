@@ -11,6 +11,7 @@
 #include <assert.h>
 
 // TODO These two functions are duplicates of op_create functions
+// TODO don't need two functions
 static void _AddNodeProperties(OpMerge *op, Schema *schema, Node *n, PropertyMap *props) {
     if (props == NULL) return;
 
@@ -18,7 +19,7 @@ static void _AddNodeProperties(OpMerge *op, Schema *schema, Node *n, PropertyMap
     Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
 
     for(int i = 0; i < props->property_count; i++) {
-        prop_id = Schema_AddAttribute(schema, SCHEMA_NODE, props->keys[i]);
+        Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
         GraphEntity_AddProperty((GraphEntity*)n, prop_id, props->values[i]);
     }
 
@@ -32,7 +33,7 @@ static void _AddEdgeProperties(OpMerge *op, Schema *schema, Edge *e, PropertyMap
     Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
 
     for(int i = 0; i < props->property_count; i++) {
-        prop_id = Schema_AddAttribute(schema, SCHEMA_EDGE, props->keys[i]);
+        Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
         GraphEntity_AddProperty((GraphEntity*)e, prop_id, props->values[i]);
     }
 
@@ -63,7 +64,6 @@ static void _CommitNodes(OpMerge *op, Record r) {
         // Set, create label.
         if(node_blueprint->label == NULL) {
             labelID = GRAPH_NO_LABEL;
-            schema = GraphContext_GetUnifiedSchema(op->gc, SCHEMA_NODE);
         } else {
             schema = GraphContext_GetSchema(op->gc, node_blueprint->label, SCHEMA_NODE);
             /* This is the first time we've encountered this label; create its schema */

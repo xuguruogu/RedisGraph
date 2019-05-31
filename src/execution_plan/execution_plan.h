@@ -74,7 +74,8 @@ OpBase* ExecutionPlan_LocateReferences(OpBase *root, uint *references);
 ExecutionPlan* NewExecutionPlan (
     RedisModuleCtx *ctx,    // Module-level context
     GraphContext *gc,       // Graph access and schemas
-    bool explain            // Construct execution plan, do not execute
+    bool compact,
+    bool explain
 );
 
 /* Prints execution plan. */

@@ -133,7 +133,7 @@ AR_ExpNode* AR_EXP_NewPropertyOperator(AR_ExpNode *alias_node, const char *prop)
     node->operand.variadic.ast_ref = NULL;
     SchemaType t = alias_node->operand.variadic.entity_type;
     node->operand.variadic.entity_type = t;
-    node->operand.variadic.entity_prop_idx = Attribute_GetID(t, prop);
+    node->operand.variadic.entity_prop_idx = ATTRIBUTE_NOTFOUND;
 
     return node;
 }

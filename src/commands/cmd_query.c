@@ -60,14 +60,6 @@ static inline bool _check_compact_flag(CommandCtx *qctx) {
             !strcasecmp(RedisModule_StringPtrLen(qctx->argv[3], NULL), "--compact"));
 }
 
-static ResultSet* _prepare_resultset(RedisModuleCtx *ctx, AST **ast, bool compact) {
-    // The last AST will contain the return clause, if one is specified
-    AST *final_ast = ast[array_len(ast)-1];
-    ResultSet *set = NewResultSet(final_ast, ctx, compact);
-    ResultSet_ReplyWithPreamble(set, ast);
-    return set;
-}
-
 void _MGraph_Query(void *args) {
     CommandCtx *qctx = (CommandCtx*)args;
     RedisModuleCtx *ctx = CommandCtx_GetRedisCtx(qctx);
@@ -115,7 +107,7 @@ void _MGraph_Query(void *args) {
 
     const cypher_astnode_type_t root_type = cypher_astnode_type(ast->root);
     if (root_type == CYPHER_AST_QUERY) { // query operation
-        ExecutionPlan *plan = NewExecutionPlan(ctx, gc, false);
+        ExecutionPlan *plan = NewExecutionPlan(ctx, gc, compact, false);
         resultSet = ExecutionPlan_Execute(plan);
         ExecutionPlan_Free(plan);
         ResultSet_Replay(resultSet);    // Send result-set back to client.

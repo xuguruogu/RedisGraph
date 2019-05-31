@@ -7,7 +7,7 @@
 #pragma once
 
 #include "op.h"
-#include "../../parser/ast.h"
+#include "../../ast/ast.h"
 #include "../../procedures/procedure.h"
 
 /* Maps procedure outout to record index.

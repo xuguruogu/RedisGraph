@@ -19,6 +19,16 @@
 #include "../ast/ast_build_op_contexts.h"
 #include "../ast/ast_build_filter_tree.h"
 
+static ResultSet* _prepare_resultset(RedisModuleCtx *ctx, AST *ast, bool compact) {
+    const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
+    bool distinct = false;
+    if (ret_clause) {
+        distinct = cypher_ast_return_is_distinct(ret_clause);
+    }
+    ResultSet *set = NewResultSet(ctx, distinct, compact);
+    return set;
+}
+
 /* Given an AST path, construct a series of scans and traversals to model it. */
 void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, const cypher_astnode_t *path, Vector *traversals) {
     GraphContext *gc = GraphContext_GetFromTLS();
@@ -36,7 +46,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, 
         uint rec_idx = ar_exp->record_idx;
         Node *n = QueryGraph_GetEntityByASTRef(qg, ast_node);
         if(cypher_ast_node_pattern_nlabels(ast_node) > 0) {
-            op = NewNodeByLabelScanOp(gc, n, rec_idx);
+            op = NewNodeByLabelScanOp(n, rec_idx);
         } else {
             op = NewAllNodeScanOp(gc->g, n, rec_idx);
         }
@@ -58,7 +68,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, 
             // Anonymous node - make space for it in the Record
             to_replace->src_node_idx = AST_AddAnonymousRecordEntry(ast);
         }
-        op = NewNodeByLabelScanOp(gc, to_replace->src_node, to_replace->src_node_idx);
+        op = NewNodeByLabelScanOp(to_replace->src_node, to_replace->src_node_idx);
         Vector_Push(traversals, op);
         AlgebraicExpression_Free(to_replace);
         for (uint q = 1; q < expCount; q ++) {
@@ -72,7 +82,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, 
             // Anonymous node - make space for it in the Record
             to_replace->src_node_idx = AST_AddAnonymousRecordEntry(ast);
         }
-        op = NewNodeByLabelScanOp(gc, to_replace->src_node, to_replace->src_node_idx);
+        op = NewNodeByLabelScanOp(to_replace->src_node, to_replace->src_node_idx);
         Vector_Push(traversals, op);
         AlgebraicExpression_Free(to_replace);
         expCount --;
@@ -96,7 +106,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, 
                 /* There's no longer need for the last matrix operand
                  * as it's been replaced by label scan. */
                 AlgebraicExpression_RemoveTerm(exp, exp->operand_count-1, NULL);
-                op = NewNodeByLabelScanOp(gc, exp->src_node, exp->src_node_idx);
+                op = NewNodeByLabelScanOp(exp->src_node, exp->src_node_idx);
                 Vector_Push(traversals, op);
             } else {
                 op = NewAllNodeScanOp(gc->g, exp->src_node, exp->src_node_idx);
@@ -137,7 +147,7 @@ void _ExecutionPlanSegment_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, 
                 /* There's no longer need for the last matrix operand
                  * as it's been replaced by label scan. */
                 AlgebraicExpression_RemoveTerm(exp, exp->operand_count-1, NULL);
-                op = NewNodeByLabelScanOp(gc, exp->dest_node, exp->dest_node_idx);
+                op = NewNodeByLabelScanOp(exp->dest_node, exp->dest_node_idx);
                 Vector_Push(traversals, op);
             } else {
                 op = NewAllNodeScanOp(gc->g, exp->dest_node, exp->dest_node_idx);
@@ -203,10 +213,10 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     FT_FilterNode *filter_tree = AST_BuildFilterTree(ast);
     segment->filter_tree = filter_tree;
 
-    if(ast->callNode) {        
-        OpBase *opProcCall = NewProcCallOp(ast->callNode->procedure, ast->callNode->arguments, ast->callNode->yield, ast);
-        Vector_Push(ops, opProcCall);
-    }
+    // if(ast->callNode) { // TODO
+        // OpBase *opProcCall = NewProcCallOp(ast->callNode->procedure, ast->callNode->arguments, ast->callNode->yield, ast);
+        // Vector_Push(ops, opProcCall);
+    // }
 
     const cypher_astnode_t **match_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MATCH);
     uint match_count = array_len(match_clauses);
@@ -534,15 +544,12 @@ void _AST_Free(AST *ast) {
 }
 
 
-ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool explain) {
+ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool compact, bool explain) {
     AST *ast = AST_GetFromTLS();
 
     ExecutionPlan *plan = rm_malloc(sizeof(ExecutionPlan));
 
-    plan->result_set = NULL;
-    if(!explain) {
-        plan->result_set = NewResultSet(ctx);
-    }
+    plan->result_set = _prepare_resultset(ctx, ast, compact);
 
     uint with_clause_count = AST_GetClauseCount(ast, CYPHER_AST_WITH);
     plan->segment_count = with_clause_count + 1;
@@ -579,7 +586,13 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     }
 
     segment = _PrepareSegment(ast_segment, input_projections);
-    if (plan->result_set) ResultSet_CreateHeader(plan->result_set, segment->projections);
+    const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
+    AR_ExpNode **return_columns = NULL;
+    if (ret_clause) {
+        return_columns = segment->projections; // TODO kludge
+    }
+    ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
+
     plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
 
     plan->root = segment->root;

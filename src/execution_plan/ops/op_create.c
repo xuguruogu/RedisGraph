@@ -44,7 +44,7 @@ static void _AddNodeProperties(OpCreate *op, Schema *schema, Node *n, PropertyMa
     Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
 
     for(int i = 0; i < props->property_count; i++) {
-        prop_id = Schema_AddAttribute(schema, SCHEMA_NODE, props->keys[i]);
+        Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
         GraphEntity_AddProperty((GraphEntity*)n, prop_id, props->values[i]);
     }
 
@@ -58,7 +58,7 @@ static void _AddEdgeProperties(OpCreate *op, Schema *schema, Edge *e, PropertyMa
     Attribute_ID prop_id = ATTRIBUTE_NOTFOUND;
 
     for(int i = 0; i < props->property_count; i++) {
-        prop_id = Schema_AddAttribute(schema, SCHEMA_EDGE, props->keys[i]);
+        Attribute_ID prop_id = GraphContext_FindOrAddAttribute(op->gc, props->keys[i]);
         GraphEntity_AddProperty((GraphEntity*)e, prop_id, props->values[i]);
     }
 
@@ -115,8 +115,6 @@ static void _CommitNodes(OpCreate *op) {
     int labelID;
     Graph *g = op->gc->g;
     
-    Schema *unified_schema = GraphContext_GetUnifiedSchema(op->gc, SCHEMA_NODE);
-
     uint node_count = array_len(op->created_nodes);
     Graph_AllocateNodes(op->gc->g, node_count);
 

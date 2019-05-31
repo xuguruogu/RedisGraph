@@ -23,10 +23,10 @@
 typedef struct {
     RedisModuleCtx *ctx;
     GraphContext *gc;           /* Context used for mapping attribute strings and IDs */
-    ResultSetHeader *header;    /* Describes how records should look like. */
+    uint column_count;
+    ResultSetHeader *header;    /* Describes how records should look like. */ // TODO should be unnecessary
+    bool distinct;              /* Whether or not each record is unique. */
     bool compact;               /* Whether records should be returned in compact form. */
-    const char **column_names;
-    uint column_count; // TODO optional
     size_t recordCount;         /* Number of records introduced. */
     char *buffer;               /* Reusable buffer for record streaming. */
     size_t bufferLen;           /* Size of buffer in bytes. */
@@ -34,11 +34,9 @@ typedef struct {
     EmitRecordFunc EmitRecord;  /* Function pointer to Record reply routine. */
 } ResultSet;
 
-ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact);
+ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact);
 
-void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast);
-
-void ResultSet_CreateHeader(ResultSet *set, AR_ExpNode **exps);
+void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 

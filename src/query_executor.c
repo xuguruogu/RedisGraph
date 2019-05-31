@@ -18,127 +18,20 @@
 
 /* Incase procedure call is missing its yield part
  * include procedure outputs. */
-static void _inlineProcedureYield(AST_ProcedureCallNode *node) {
-    if(node->yield) return;
+// TODO
+// static void _inlineProcedureYield(AST_ProcedureCallNode *node) {
+    // if(node->yield) return;
 
-    ProcedureCtx *proc = Proc_Get(node->procedure);
-    if(!proc) return;
+    // ProcedureCtx *proc = Proc_Get(node->procedure);
+    // if(!proc) return;
 
-    unsigned int output_count = array_len(proc->output);
+    // unsigned int output_count = array_len(proc->output);
 
-    node->yield = array_new(char*, output_count);
-    for(int i = 0; i < output_count; i++) {
-        node->yield = array_append(node->yield, strdup(proc->output[i]->name));
-    }
-}
-
-/* Modifies AST by expanding RETURN * or RETURN
- * a into a list of individual properties. */
-AR_ExpNode** _ExpandCollapsedNodes(AST *ast, AR_ExpNode **return_expressions) {
-
-    char buffer[256];
-    GraphContext *gc = GraphContext_GetFromTLS();
-
-    unsigned int return_expression_count = array_len(return_expressions);
-    AR_ExpNode **expandReturnElements = array_new(AR_ExpNode*, return_expression_count);
-
-    /* Scan return clause, search for collapsed nodes. */
-    for (unsigned int i = 0; i < return_expression_count; i++) {
-        AR_ExpNode *exp = return_expressions[i];
-
-        /* Detect collapsed entity,
-         * A collapsed entity is represented by an arithmetic expression
-         * of AR_EXP_OPERAND type,
-         * The operand type should be AST_AR_EXP_VARIADIC,
-         * lastly property should be missing. */
-        if (exp->collapsed) {
-
-            /* Return clause doesn't contains entity's label,
-             * Find collapsed entity's label. */
-            // TODO fails for reference expressions:
-            // MATCH (a) WITH a RETURN a
-            const cypher_astnode_t *ast_entity = exp->operand.variadic.ast_ref;
-            uint idx = (exp->record_idx != NOT_IN_RECORD) ? exp->record_idx : exp->operand.variadic.entity_alias_idx;
-            AR_ExpNode *collapsed_entity = ast->defined_entities[idx];
-            // Entity was an expression rather than a node or edge
-            // if (collapsed_entity->t != A_ENTITY) continue;
-
-
-            cypher_astnode_type_t type = cypher_astnode_type(ast_entity);
-
-            SchemaType schema_type;
-            Schema *schema;
-            const char *label = NULL;
-            if (type == CYPHER_AST_NODE_PATTERN) {
-                schema_type = SCHEMA_NODE;
-                if (cypher_ast_node_pattern_nlabels(ast_entity) > 0) {
-                    const cypher_astnode_t *label_node = cypher_ast_node_pattern_get_label(ast_entity, 0);
-                    label = cypher_ast_label_get_name(label_node);
-                }
-            } else if (type == CYPHER_AST_REL_PATTERN) {
-                schema_type = SCHEMA_EDGE;
-                if (cypher_ast_rel_pattern_nreltypes(ast_entity) > 0) {
-                    // TODO collect all reltypes or update logic elesewhere
-                    const cypher_astnode_t *reltype_node = cypher_ast_rel_pattern_get_reltype(ast_entity, 0);
-                    label = cypher_ast_reltype_get_name(reltype_node);
-                }
-            } else {
-                assert(false);
-            }
-
-            /* Find label's properties. */
-            if(label) {
-                /* Collapsed entity has a label. */
-                schema = GraphContext_GetSchema(gc, label, schema_type);
-            } else {
-                /* Entity does have a label, Consult with unified schema. */
-                schema = GraphContext_GetUnifiedSchema(gc, schema_type);
-            }
-
-            void *ptr = NULL;       /* schema property value, (not in use). */
-            char *prop = NULL;      /* Entity property. */
-            tm_len_t prop_len = 0;  /* Length of entity's property. */
-
-            AR_ExpNode *expanded_exp;
-            if(!schema || Schema_AttributeCount(schema) == 0) {
-                /* Schema missing or
-                 * label doesn't have any properties.
-                 * Create a fake return element. */
-                expanded_exp = AR_EXP_NewConstOperandNode(SI_ConstStringVal(""));
-                expanded_exp->alias = exp->alias;
-                expandReturnElements = array_append(expandReturnElements, expanded_exp);
-            } else {
-                TrieMapIterator *it = TrieMap_Iterate(schema->attributes, "", 0);
-                while(TrieMapIterator_Next(it, &prop, &prop_len, &ptr)) {
-                    prop_len = MIN(255, prop_len);
-                    memcpy(buffer, prop, prop_len);
-                    buffer[prop_len] = '\0';
-
-                    /* Create a new return element foreach property. */
-                    uint id = AST_AddRecordEntry(ast);
-                    expanded_exp = AR_EXP_NewPropertyOperator(exp, buffer);
-                    AR_EXP_AssignRecordIndex(expanded_exp, id);
-                    ast->defined_entities = array_append(ast->defined_entities, expanded_exp);
-
-                    // TODO This logic is terrible, but only required until we remove collapsed entities
-                    char *expanded_name;
-                    AR_EXP_ToString(expanded_exp, &expanded_name);
-                    AST_MapAlias(ast, expanded_name, expanded_exp);
-                    expanded_exp->alias = expanded_name;
-                    expandReturnElements = array_append(expandReturnElements, expanded_exp);
-                }
-                TrieMapIterator_Free(it);
-            }
-        } else {
-            expandReturnElements = array_append(expandReturnElements, exp);
-        }
-    }
-
-    /* Override previous return clause. */
-    array_free(return_expressions);
-
-    return expandReturnElements;
-}
+    // node->yield = array_new(char*, output_count);
+    // for(int i = 0; i < output_count; i++) {
+        // node->yield = array_append(node->yield, strdup(proc->output[i]->name));
+    // }
+// }
 
 AST_Validation AST_PerformValidations(RedisModuleCtx *ctx, const AST *ast) {
     char *reason;
@@ -373,18 +266,6 @@ AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_c
 
 AR_ExpNode** AST_BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_clause) {
     AR_ExpNode **exps = _BuildReturnExpressions(ast, ret_clause);
-
-    bool contains_collapsed = false;
-    uint exp_count = array_len(exps);
-    for (uint i = 0; i < exp_count; i ++) {
-        if (exps[i]->collapsed == true) {
-            contains_collapsed = true;
-            break;
-        }
-    }
-    if (contains_collapsed) {
-        exps = _ExpandCollapsedNodes(ast, exps);
-    }
 
     return exps;
 }

@@ -22,18 +22,6 @@ threadpool _thpool = NULL;
 pthread_key_t _tlsGCKey;    // Thread local storage graph context key.
 pthread_key_t _tlsASTKey;   // Thread local storage AST key.
 
-/* Set up thread pool,
- * number of threads within pool should be
- * the number of available hyperthreads.
- * Returns 1 if thread pool initialized, 0 otherwise. */
-int _Setup_ThreadPOOL(int threadCount) {
-    // Create thread pool.
-    _thpool = thpool_init(threadCount);
-    if(_thpool == NULL) return 0;
-
-    return 1;
-}
-
 // Define the C symbols for RediSearch.
 REDISEARCH_API_INIT_SYMBOLS();
 
@@ -46,6 +34,7 @@ int _Setup_ThreadPOOL(int threadCount) {
     _thpool = thpool_init(threadCount);
     if(_thpool == NULL) return 0;
 
+    return 1;
 }
 
 /* Create thread local storage keys. */

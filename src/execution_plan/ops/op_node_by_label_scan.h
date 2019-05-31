@@ -24,7 +24,7 @@ typedef struct {
 } NodeByLabelScan;
 
 /* Creates a new NodeByLabelScan operation */
-OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node, uint node_idx);
+OpBase *NewNodeByLabelScanOp(Node *node, uint node_idx);
 
 OpResult NodeByLabelScanInit(OpBase *ctx);
 

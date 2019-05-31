@@ -91,7 +91,7 @@ Record OpProcCallConsume(OpBase *opBase) {
 
     if(op->op.childCount == 0) {
         /* Make record large enough to accommodate all alias entities. */
-        r = Record_New(op->ast->_aliasIDMapping->cardinality);
+        r = Record_New(opBase->record_len);
     } else {
         OpBase *child = op->op.children[0];
         r = child->consume(child);

@@ -7,7 +7,7 @@
 #include "op_node_by_label_scan.h"
 #include "../../ast/ast.h"
 
-OpBase *NewNodeByLabelScanOp(GraphContext *gc, Node *node, unsigned int node_idx) {
+OpBase *NewNodeByLabelScanOp(Node *node, unsigned int node_idx) {
     NodeByLabelScan *nodeByLabelScan = malloc(sizeof(NodeByLabelScan));
     GraphContext *gc = GraphContext_GetFromTLS();
     nodeByLabelScan->g = gc->g;

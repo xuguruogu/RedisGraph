@@ -156,22 +156,21 @@ void ResultSet_EmitCompactRecord(RedisModuleCtx *ctx, GraphContext *gc, const Re
 // For every column in the header, emit a 2-array that specifies
 // the column alias followed by an enum denoting what type
 // (scalar, node, or relation) it holds.
-void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, const ResultSetHeader *header, TrieMap *entities) {
-    RedisModule_ReplyWithArray(ctx, header->columns_len);
-    for(int i = 0; i < header->columns_len; i++) {
+void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
+    uint columns_len = array_len(exps);
+    RedisModule_ReplyWithArray(ctx, columns_len);
+    for(uint i = 0; i < columns_len; i++) {
+        AR_ExpNode *exp = exps[i];
         RedisModule_ReplyWithArray(ctx, 2);
-        Column *c = header->columns[i];
         ColumnTypeUser t;
-        char *identifier = c->alias? c->alias: c->name;
-        AST_GraphEntity *entity = TrieMap_Find(entities, identifier, strlen(identifier));
-
         // First, emit the column type enum
-        if(entity == TRIEMAP_NOTFOUND) {
-            t = COLUMN_SCALAR;
-        } else if(entity->t == N_ENTITY) {
-            t = COLUMN_NODE;
-        } else if(entity->t == N_LINK) {
-            t = COLUMN_RELATION;
+        // TODO fix logic for this
+        if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
+            if (exp->operand.variadic.entity_type == SCHEMA_NODE) {
+                t = COLUMN_NODE;
+            } else {
+                t = COLUMN_RELATION;
+            }
         } else {
             t = COLUMN_SCALAR;
         }
@@ -179,6 +178,9 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, const ResultSetHeader
         RedisModule_ReplyWithLongLong(ctx, t);
 
         // Second, emit the identifier string associated with the column
-        RedisModule_ReplyWithStringBuffer(ctx, identifier, strlen(identifier));
+        char *column_name;
+        AR_EXP_ToString(exp, &column_name);
+        RedisModule_ReplyWithStringBuffer(ctx, column_name, strlen(column_name));
+        rm_free(column_name);
     }
 }

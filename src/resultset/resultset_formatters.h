@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include "resultset_header.h"
 #include "../redismodule.h"
 #include "../execution_plan/record.h"
 #include "../graph/graphcontext.h"
@@ -52,7 +51,7 @@ void ResultSet_EmitVerboseRecord(RedisModuleCtx *ctx, GraphContext *gc, const Re
 void ResultSet_EmitCompactRecord(RedisModuleCtx *ctx, GraphContext *gc, const Record r, unsigned int numcols);
 
 // Formatter for verbose header reply
-void ResultSet_ReplyWithVerboseHeader(RedisModuleCtx *ctx, const ResultSetHeader *header);
+void ResultSet_ReplyWithVerboseHeader(RedisModuleCtx *ctx, AR_ExpNode **exps);
 
 // Formatter for compact header reply
-void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, const ResultSetHeader *header, TrieMap *entities);
+void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps);

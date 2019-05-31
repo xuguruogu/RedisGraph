@@ -5,6 +5,7 @@
  */
 
 #include "resultset_formatters.h"
+#include "../util/arr.h"
 
 /* This function has handling for all SIValue scalar types.
  * The current RESP protocol only has unique support for strings, 8-byte integers,
@@ -148,14 +149,14 @@ void ResultSet_EmitVerboseRecord(RedisModuleCtx *ctx, GraphContext *gc, const Re
 }
 
 // Emit the alias or descriptor for each column in the header.
-void ResultSet_ReplyWithVerboseHeader(RedisModuleCtx *ctx, const ResultSetHeader *header) {
-    RedisModule_ReplyWithArray(ctx, header->columns_len);
-    for(int i = 0; i < header->columns_len; i++) {
-        Column *c = header->columns[i];
-        if(c->alias) {
-            RedisModule_ReplyWithStringBuffer(ctx, c->alias, strlen(c->alias));
-        } else {
-            RedisModule_ReplyWithStringBuffer(ctx, c->name, strlen(c->name));
-        }
+void ResultSet_ReplyWithVerboseHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
+    uint columns_len = array_len(exps);
+    RedisModule_ReplyWithArray(ctx, columns_len);
+    for(uint i = 0; i < columns_len; i++) {
+        AR_ExpNode *exp = exps[i];
+        char *column_name;
+        AR_EXP_ToString(exp, &column_name);
+        RedisModule_ReplyWithStringBuffer(ctx, column_name, strlen(column_name));
+        rm_free(column_name);
     }
 }

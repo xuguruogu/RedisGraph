@@ -63,42 +63,69 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-void ResultSet_CreateHeader(ResultSet *resultset, AR_ExpNode **exps) {
-    assert(resultset->recordCount == 0);
+static Column* _NewColumn(char *name, char *alias) {
+    Column* column = rm_malloc(sizeof(Column));
+    column->name = name;
+    column->alias = alias;
+    return column;
+}
 
-    resultset->column_count = array_len(exps);
+static void _Column_Free(Column* column) {
+    /* No need to free alias,
+     * it will be freed as part of AST_Free. */
+    rm_free(column->name);
+    rm_free(column);
+}
+
+static void _ResultSet_CreateHeader(ResultSet *set, AR_ExpNode **exps) {
+    assert(set->recordCount == 0);
+
+    set->column_count = array_len(exps);
+    // ResultSetHeader* header = rm_malloc(sizeof(ResultSetHeader));
+
+    // header->columns_len = array_len(exps);
+    // header->columns = rm_malloc(sizeof(Column*) * header->columns_len);
+
+    // for(int i = 0; i < header->columns_len; i++) {
+        // AR_ExpNode *ar_exp = exps[i];
+
+        // char *column_name;
+        // AR_EXP_ToString(ar_exp, &column_name);
+        // Column *column = _NewColumn(column_name, NULL);
+        // header->columns[i] = column;
+    // }
+
+    // set->header = header;
     /* Replay with table header. */
-    _ResultSet_ReplayHeader(resultset, exps);
+    if (set->compact) {
+        ResultSet_ReplyWithCompactHeader(set->ctx, exps);
+    } else {
+        ResultSet_ReplyWithVerboseHeader(set->ctx, exps); 
+    }
 }
 
-// Set the DISTINCT, SKIP, and LIMIT values specified in the query
-void ResultSet_GetReturnModifiers(AST *ast, ResultSet *set) {
-    const cypher_astnode_t *ret_clause = AST_GetClause(ast->root, CYPHER_AST_RETURN);
-    if (!ret_clause) return;
+static void _ResultSetHeader_Free(ResultSetHeader* header) {
+    if(!header) return;
 
-    set->distinct = (ret_clause && cypher_ast_return_is_distinct(ret_clause));
+    for(int i = 0; i < header->columns_len; i++) _Column_Free(header->columns[i]);
 
-    /*
-    // Get user-specified number of rows to skip
-    const cypher_astnode_t *skip_clause = cypher_ast_return_get_skip(ret_clause);
-    if (skip_clause) set->skip = AST_ParseIntegerNode(skip_clause);
+    if(header->columns != NULL) {
+        rm_free(header->columns);
+    }
 
-    // Get user-specified limit on number of returned rows
-    const cypher_astnode_t *limit_clause = cypher_ast_return_get_limit(ret_clause);
-    if(limit_clause) set->limit = set->skip + AST_ParseIntegerNode(limit_clause);
-    */
+    rm_free(header);
 }
 
-ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
+ResultSet* NewResultSet(RedisModuleCtx *ctx, bool distinct, bool compact) {
     ResultSet* set = (ResultSet*)malloc(sizeof(ResultSet));
     set->ctx = ctx;
     set->gc = GraphContext_GetFromTLS();
-    set->distinct = false;
+    set->distinct = distinct;
     set->compact = compact;
     set->EmitRecord = _ResultSet_SetReplyFormatter(set->compact);
-    set->column_names = NULL;
-    set->column_count = 0;
     set->recordCount = 0;    
+    set->column_count = 0;
+    set->header = NULL;
     set->bufferLen = 2048;
     set->buffer = malloc(set->bufferLen);
 
@@ -113,10 +140,8 @@ ResultSet* NewResultSet(AST* ast, RedisModuleCtx *ctx, bool compact) {
 }
 
 // Initialize the user-facing reply arrays.
-void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast) {
-    // The last AST will contain the return clause, if one is specified
-    AST *final_ast = ast[array_len(ast)-1];
-    if (final_ast->returnNode == NULL) {
+void ResultSet_ReplyWithPreamble(ResultSet *set, AR_ExpNode **exps) {
+    if (exps == NULL) {
         // Queries that don't form result sets will only emit statistics
         RedisModule_ReplyWithArray(set->ctx, 1);
         return;
@@ -125,7 +150,7 @@ void ResultSet_ReplyWithPreamble(ResultSet *set, AST **ast) {
     // header, records, statistics
     RedisModule_ReplyWithArray(set->ctx, 3);
 
-    _ResultSet_CreateHeader(set, ast);
+    _ResultSet_CreateHeader(set, exps);
 
     // We don't know at this point the number of records we're about to return.
     RedisModule_ReplyWithArray(set->ctx, REDISMODULE_POSTPONED_ARRAY_LEN);
@@ -135,7 +160,7 @@ int ResultSet_AddRecord(ResultSet *set, Record r) {
     set->recordCount++;
 
     // Output the current record using the defined formatter
-    set->EmitRecord(set->ctx, set->gc, r, set->header->columns_len);
+    set->EmitRecord(set->ctx, set->gc, r, set->column_count);
 
     return RESULTSET_OK;
 }
@@ -143,7 +168,7 @@ int ResultSet_AddRecord(ResultSet *set, Record r) {
 void ResultSet_Replay(ResultSet* set) {
     // If we have emitted records, set the number of elements in the
     // preceding array
-    if (set->header) {
+    if (set->column_count > 0) {
         size_t resultset_size = set->recordCount;
         RedisModule_ReplySetArrayLength(set->ctx, resultset_size);
     }
@@ -154,5 +179,6 @@ void ResultSet_Free(ResultSet *set) {
     if(!set) return;
 
     free(set->buffer);
+    if(set->header) _ResultSetHeader_Free(set->header);
     free(set);
 }

@@ -31,5 +31,3 @@
 #include "op_node_by_id_seek.h"
 #include "op_procedure_call.h"
 #include "op_apply.h"
-
-#endif
