@@ -15,9 +15,9 @@ static inline EdgeCreateCtx _NewEdgeCreateCtx(AST *ast, const QueryGraph *qg, co
     const cypher_astnode_t *ast_edge = cypher_ast_pattern_path_get_element(path, edge_path_offset);
     const cypher_astnode_t *ast_props = cypher_ast_rel_pattern_get_properties(ast_edge);
 
-    AR_ExpNode *exp = AST_GetEntity(ast, ast_edge);
+    uint id = AST_GetEntity(ast, ast_edge);
     // Register entity for Record if necessary
-    AST_RecordAccommodateExpression(ast, exp);
+    if (id == NOT_IN_RECORD) id = AST_MapEntity(ast, ast_edge);
 
     // Get QueryGraph entity
     Edge *e = QueryGraph_GetEntityByASTRef(qg, ast_edge);
@@ -28,7 +28,7 @@ static inline EdgeCreateCtx _NewEdgeCreateCtx(AST *ast, const QueryGraph *qg, co
                                .properties = AST_ConvertPropertiesMap(ast, ast_props),
                                .src_idx = src_idx,
                                .dest_idx = dest_idx,
-                               .edge_idx = exp->record_idx };
+                               .edge_idx = id };
     return new_edge;
 }
 
@@ -36,12 +36,12 @@ static inline NodeCreateCtx _NewNodeCreateCtx(AST *ast, const QueryGraph *qg, co
     Node *n = QueryGraph_GetEntityByASTRef(qg, ast_node);
     const cypher_astnode_t *ast_props = cypher_ast_node_pattern_get_properties(ast_node);
 
-    AR_ExpNode *exp = AST_GetEntity(ast, ast_node);
+    uint id = AST_GetEntity(ast, ast_node);
     // Register entity for Record if necessary
-    AST_RecordAccommodateExpression(ast, exp);
+    if (id == NOT_IN_RECORD) id = AST_MapEntity(ast, ast_node);
 
     PropertyMap *properties = AST_ConvertPropertiesMap(ast, ast_props);
-    NodeCreateCtx new_node = { .node = n, .properties = properties, .node_idx = exp->record_idx };
+    NodeCreateCtx new_node = { .node = n, .properties = properties, .node_idx = id };
 
     return new_node;
 }
@@ -82,7 +82,6 @@ AR_ExpNode** _AST_ConvertCollection(const cypher_astnode_t *collection) {
     for(uint i = 0; i < expCount; i ++) {
         const cypher_astnode_t *exp_node = cypher_ast_collection_get(collection, i);
         AR_ExpNode *exp = AR_EXP_FromExpression(ast, exp_node);
-        exp->collapsed = false;
         expressions = array_append(expressions, exp);
     }
 
@@ -149,18 +148,19 @@ void AST_PrepareDeleteOp(const cypher_astnode_t *delete_clause, uint **nodes_ref
         const cypher_astnode_t *ast_expr = cypher_ast_delete_get_expression(delete_clause, i);
         assert(cypher_astnode_type(ast_expr) == CYPHER_AST_IDENTIFIER);
         const char *alias = cypher_ast_identifier_get_name(ast_expr);
-        AR_ExpNode *entity = AST_GetEntityFromAlias(ast, (char*)alias);
-        assert(entity);
-        uint id = entity->record_idx;
+        uint id = AST_GetEntityFromAlias(ast, alias);
         assert(id != NOT_IN_RECORD);
-        SchemaType type = entity->operand.variadic.entity_type;
-        if (type == SCHEMA_NODE) {
-            nodes_to_delete = array_append(nodes_to_delete, id);
-        } else if (type == SCHEMA_EDGE) {
-            edges_to_delete = array_append(edges_to_delete, id);
-        } else {
-            assert(false);
-        }
+        // TODO
+        assert(false);
+        // QueryGraph_GetEntityByRecordID(qg, id);
+        // SchemaType type = entity->operand.variadic.entity_type;
+        // if (type == SCHEMA_NODE) {
+            // nodes_to_delete = array_append(nodes_to_delete, id);
+        // } else if (type == SCHEMA_EDGE) {
+            // edges_to_delete = array_append(edges_to_delete, id);
+        // } else {
+            // assert(false);
+        // }
     }
 
     *nodes_ref = nodes_to_delete;
@@ -224,7 +224,7 @@ AST_UnwindContext AST_PrepareUnwindOp(const AST *ast, const cypher_astnode_t *un
     const cypher_astnode_t *collection = cypher_ast_unwind_get_expression(unwind_clause);
     AR_ExpNode **exps = _AST_ConvertCollection(collection);
     const char *alias = cypher_ast_identifier_get_name(cypher_ast_unwind_get_alias(unwind_clause));
-    uint record_idx = AST_GetAliasID(ast, (char*)alias);
+    uint record_idx = AST_GetEntityFromAlias(ast, alias);
 
     AST_UnwindContext ctx = { .exps = exps, .record_idx = record_idx };
     return ctx;
@@ -242,9 +242,9 @@ AST_MergeContext AST_PrepareMergeOp(AST *ast, const cypher_astnode_t *merge_clau
 
     for(uint i = 0; i < entity_count; i ++) {
         const cypher_astnode_t *elem = cypher_ast_pattern_path_get_element(path, i);
-        AR_ExpNode *exp = AST_GetEntity(ast, elem);
+        uint id = AST_GetEntity(ast, elem);
         // Register entity for Record if necessary
-        AST_RecordAccommodateExpression(ast, exp);
+        if (id == NOT_IN_RECORD) id = AST_MapEntity(ast, elem);
 
         if (i % 2) { // Entity is a relationship
             EdgeCreateCtx new_edge = _NewEdgeCreateCtx(ast, qg, path, i);

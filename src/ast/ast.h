@@ -30,7 +30,6 @@ typedef struct {
     // Extensible array of entities described in MATCH, MERGE, and CREATE clausesp
     AR_ExpNode **defined_entities;    // TODO delete if possible
     TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AR_ExpNodes (TODO replace with record IDs)
-    uint record_length;               // TODO can be moved to segment?
 } AST;
 
 // AST clause validations.
@@ -82,15 +81,18 @@ void AST_BuildAliasMap(AST *ast);
 
 uint AST_GetAliasID(const AST *ast, const char *alias);
 
-void AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, AR_ExpNode *exp);
+uint AST_GetEntity(const AST *ast, AST_IDENTIFIER entity);
 
-void AST_MapAlias(const AST *ast, const char *alias, AR_ExpNode *exp);
-
-AR_ExpNode* AST_GetEntity(const AST *ast, AST_IDENTIFIER entity);
-
-AR_ExpNode* AST_GetEntityFromAlias(const AST *ast, const char *alias);
+uint AST_GetEntityFromAlias(const AST *ast, const char *alias);
 
 uint AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity);
+
+uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier);
+
+
+uint AST_MapAlias(const AST *ast, const char *alias);
+
+void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
 
 // TODO find better place for record code
 uint AST_RecordLength(const AST *ast);

@@ -101,19 +101,21 @@ FT_FilterNode* _convertInlinedProperties(AST *ast, const cypher_astnode_t *entit
 
     if (!props) return NULL;
 
-    AR_ExpNode *exp = AST_GetEntity(ast, entity);
-    if (exp->record_idx == NOT_IN_RECORD) {
-        exp->record_idx = AST_AddAnonymousRecordEntry(ast);
-    }
+    uint entity_id = AST_GetEntity(ast, entity);
+    assert (entity_id != NOT_IN_RECORD);
+    // if (entity_== NOT_IN_RECORD) {
+        // exp->record_idx = AST_AddAnonymousRecordEntry(ast);
+    // }
     // Necessary for ID collection in 'modified' filter placement
-    exp->operand.variadic.entity_alias_idx = exp->record_idx;
+    // exp->operand.variadic.entity_alias_idx = exp->record_idx;
 
     FT_FilterNode *root = NULL;
     unsigned int nelems = cypher_ast_map_nentries(props);
     for (unsigned int i = 0; i < nelems; i ++) {
         // key is of type CYPHER_AST_PROP_NAME
         const char *prop = cypher_ast_prop_name_get_value(cypher_ast_map_get_key(props, i));
-        AR_ExpNode *lhs = AR_EXP_NewPropertyOperator(exp, prop);
+        SchemaType entity_type = (i % 2) ? SCHEMA_EDGE : SCHEMA_NODE;
+        AR_ExpNode *lhs = AR_EXP_NewPropertyOperator(entity_id, prop, entity_type);
 
         // val is of type CYPHER_AST_EXPRESSION
         const cypher_astnode_t *val = cypher_ast_map_get_value(props, i);

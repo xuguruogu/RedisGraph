@@ -6,37 +6,50 @@
 
 #include "ast.h"
 #include "../util/arr.h"
+#include "../util/rmalloc.h"
 #include "../arithmetic/arithmetic_expression.h"
 #include <assert.h>
 
 uint AST_GetAliasID(const AST *ast, const char *alias) {
     AR_ExpNode *exp = TrieMap_Find(ast->entity_map, (char*)alias, strlen(alias));
-    return exp->record_idx;
+    return exp->operand.variadic.record_idx;
 }
 
-void AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, AR_ExpNode *exp) {
-    TrieMap_Add(ast->entity_map, (char*)&identifier, sizeof(identifier), exp, TrieMap_DONT_CARE_REPLACE);
+uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier) {
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = ast->entity_map->cardinality;
+    TrieMap_Add(ast->entity_map, (char*)&identifier, sizeof(identifier), id_ptr, TrieMap_DONT_CARE_REPLACE);
+    return *id_ptr;
 }
 
-void AST_MapAlias(const AST *ast, const char *alias, AR_ExpNode *exp) {
-    TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), exp, TrieMap_DONT_CARE_REPLACE);
+uint AST_MapAlias(const AST *ast, const char *alias) {
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = ast->entity_map->cardinality;
+    TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
+    return *id_ptr;
 }
 
-AR_ExpNode* AST_GetEntity(const AST *ast, AST_IDENTIFIER entity) {
+void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id) {
+    uint *id_ptr = rm_malloc(sizeof(uint));
+    *id_ptr = id;
+    TrieMap_Add(ast->entity_map, (char*)alias, strlen(alias), id_ptr, TrieMap_DONT_CARE_REPLACE);
+}
+
+uint AST_GetEntity(const AST *ast, AST_IDENTIFIER entity) {
     AR_ExpNode *v = TrieMap_Find(ast->entity_map, (char*)&entity, sizeof(entity));
-    if (v == TRIEMAP_NOTFOUND) return NULL;
-    return v;
+    if (v == TRIEMAP_NOTFOUND) return NOT_IN_RECORD;
+    return *(uint*)v;
 }
 
-AR_ExpNode* AST_GetEntityFromAlias(const AST *ast, const char *alias) {
+uint AST_GetEntityFromAlias(const AST *ast, const char *alias) {
     void *v = TrieMap_Find(ast->entity_map, (char*)alias, strlen(alias));
-    if (v == TRIEMAP_NOTFOUND) return NULL;
-    return v;
+    if (v == TRIEMAP_NOTFOUND) return NOT_IN_RECORD;
+    return *(uint*)v;
 }
 
+// TODO dup
 uint AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity) {
-    AR_ExpNode *exp = AST_GetEntity(ast, entity);
-    return exp->record_idx;
+    return AST_GetEntity(ast, entity);
 }
 
 uint AST_RecordLength(const AST *ast) {

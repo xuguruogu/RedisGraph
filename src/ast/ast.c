@@ -31,55 +31,6 @@ static void _consume_function_call_expression(const cypher_astnode_t *expression
     }
 }
 
-void _mapWith(AST *ast, const cypher_astnode_t *with_clause) {
-    // TODO logic duplicated from AST_BuildWithExpressions
-    unsigned int count = cypher_ast_with_nprojections(with_clause);
-    AR_ExpNode **with_expressions = array_new(AR_ExpNode*, count);
-    for (unsigned int i = 0; i < count; i++) {
-        const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
-        const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
-
-        AR_ExpNode *exp = NULL;
-        char *identifier = NULL;
-
-        if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
-            // Retrieve "a" from "with a" or "with a AS e"
-            identifier = (char*)cypher_ast_identifier_get_name(expr);
-            exp = AST_GetEntityFromAlias(ast, (char*)identifier);
-        }
-
-        if (exp == NULL) {
-            // Identifier did not appear in previous clauses.
-            // It may be a constant or a function call (or other?)
-            // Create a new entity to represent it.
-            exp = AR_EXP_FromExpression(ast, expr);
-
-            // Make space for entity in record
-            unsigned int id = AST_AddRecordEntry(ast);
-            AR_EXP_AssignRecordIndex(exp, id);
-            // Add entity to the set of entities to be populated
-            ast->defined_entities = array_append(ast->defined_entities, exp);
-            AST_MapEntity(ast, projection, exp);
-        }
-
-        // If the projection is aliased, add the alias to mappings and Record
-        char *alias = NULL;
-        const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
-        if (alias_node) {
-            // The projection either has an alias (AS) or is a function call.
-            alias = (char*)cypher_ast_identifier_get_name(alias_node);
-
-            // Associate alias with the expression
-            AST_MapAlias(ast, alias, exp);
-            exp->alias = alias;
-            with_expressions = array_append(with_expressions, exp);
-        } else {
-            exp->alias = identifier;
-            with_expressions = array_append(with_expressions, exp);
-        }
-    }
-}
-
 void _mapUnwind(AST *ast, const cypher_astnode_t *unwind_clause) {
     const cypher_astnode_t *alias_node = cypher_ast_unwind_get_alias(unwind_clause);
     const char *alias = cypher_ast_identifier_get_name(cypher_ast_unwind_get_alias(unwind_clause));
@@ -88,7 +39,7 @@ void _mapUnwind(AST *ast, const cypher_astnode_t *unwind_clause) {
     uint id = AST_AddRecordEntry(ast);
     AR_ExpNode *exp = AR_EXP_NewReferenceNode(alias, id, false);
     ast->defined_entities = array_append(ast->defined_entities, exp);
-    AST_MapAlias(ast, alias, exp);
+    AST_MapAlias(ast, alias, id);
 
 }
 
@@ -242,7 +193,6 @@ AST* AST_Build(cypher_parse_result_t *parse_result) {
     AST *ast = rm_malloc(sizeof(AST));
     ast->root = AST_GetBody(parse_result);
     assert(ast->root);
-    ast->record_length = 0;
     ast->entity_map = NULL;
     ast->defined_entities = NULL;
 
@@ -265,7 +215,6 @@ AST* AST_NewSegment(AST *master_ast, uint start_offset, uint end_offset) {
     // ast->root = cypher_ast_query(NULL, 0, (cypher_astnode_t *const *)clauses, n, clauses, n, range);
 
     pthread_setspecific(_tlsASTKey, ast); // TODO I don't know if I like this
-    ast->record_length = 0;
     ast->entity_map = NewTrieMap();
     ast->defined_entities = array_new(AR_ExpNode*, 1);
 
@@ -328,22 +277,18 @@ void _AST_MapPath(AST *ast, const cypher_astnode_t *path, bool map_anonymous) {
         // If the entity is aliased: (a:person)
         // it should be mapped. We may have already constructed a mapping
         // on a previous encounter: MATCH (a)-[]->(a)
+        AR_ExpNode *exp = NULL;
+        uint record_idx;
         if (ast_alias) {
             const char *alias = cypher_ast_identifier_get_name(ast_alias);
-            AR_ExpNode *exp = AST_GetEntityFromAlias(ast, (char*)alias);
+            record_idx = AST_GetEntityFromAlias(ast, alias);
             // Alias was not previously encountered.
-            if (exp == NULL) {
-                uint id = AST_AddRecordEntry(ast);
-                exp = AR_EXP_NewVariableOperandNode(entity, alias, id);
-                ast->defined_entities = array_append(ast->defined_entities, exp);
+            if (record_idx == NOT_IN_RECORD) {
+                record_idx = AST_MapEntity(ast, entity);
             }
-            AST_MapEntity(ast, entity, exp);
-            AST_MapAlias(ast, (char*)alias, exp);
         } else if (map_anonymous) {
-            uint id = AST_AddRecordEntry(ast);
-            AR_ExpNode *exp = AR_EXP_NewAnonymousEntity(id);
-            ast->defined_entities = array_append(ast->defined_entities, exp);
-            AST_MapEntity(ast, entity, exp);
+            record_idx = AST_MapEntity(ast, entity);
+            uint record_idx = AST_AddRecordEntry(ast);
         }
     }
 }

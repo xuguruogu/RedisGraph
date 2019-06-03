@@ -24,7 +24,6 @@ typedef enum {
     AR_EXP_UNKNOWN,
     AR_EXP_OP,
     AR_EXP_OPERAND,
-    AR_EXP_REFERENCE,
 } AR_ExpNodeType;
 
 /* AR_OPType type of operation 
@@ -60,26 +59,22 @@ typedef struct {
     AR_OPType type;
 } AR_OpNode;
 
-/* OperandNode represents either a constant numeric value, 
+/* OperandNode represents either a constant numeric value,
  * or a graph entity property. */
 typedef struct {
     union {
         SIValue constant;
         struct {
             const char *entity_alias;
-            int entity_alias_idx;
-            // TODO extend AR_OperandNodeType to have a property specifier type
             const char *entity_prop;
-            SchemaType entity_type;
+            int entity_alias_idx;
             Attribute_ID entity_prop_idx;
-            // TODO can almost delete ast_ref
-            const cypher_astnode_t *ast_ref;
         } variadic;
     };
 	AR_OperandNodeType type;
 } AR_OperandNode;
 
-/* AR_ExpNode a node within an arithmetic expression tree, 
+/* AR_ExpNode a node within an arithmetic expression tree,
  * This node can take one of two forms:
  * 1. OpNode
  * 2. OperandNode */
@@ -88,10 +83,7 @@ struct AR_ExpNode {
         AR_OperandNode operand;
         AR_OpNode op;
     };
-    const char *alias;
     AR_ExpNodeType type;
-    uint record_idx;
-    bool collapsed; // TODO remove upon deleting collapsed entity logic
 };
 
 /* Mathematical functions - numeric */
@@ -155,8 +147,7 @@ int AR_EXP_ContainsAggregation(AR_ExpNode *root, AR_ExpNode **agg_node);
 void AR_EXP_ToString(const AR_ExpNode *root, char **str);
 
 AR_ExpNode* AR_EXP_NewVariableOperandNode(const cypher_astnode_t *entity, const char *alias, uint id);
-AR_ExpNode* AR_EXP_NewPropertyOperator(AR_ExpNode *alias_node, const char *prop);
-AR_ExpNode* AR_EXP_NewReferenceNode(const char *alias, unsigned int record_idx, bool collapsed);
+AR_ExpNode* AR_EXP_NewPropertyOperator(uint entity_id, const char *prop, SchemaType t);
 AR_ExpNode* AR_EXP_NewAnonymousEntity(uint id);
 AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant);
 

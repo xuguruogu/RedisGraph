@@ -182,15 +182,12 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         e = QueryGraph_GetEntityByASTRef(q, ast_rel);
         transpose = (cypher_ast_rel_pattern_get_direction(ast_rel) == CYPHER_REL_INBOUND);
 
-        AR_ExpNode *expr = AST_GetEntity(ast, ast_rel);
+        uint edge_idx = AST_GetEntity(ast, ast_rel);
         /* If edge is referenced, set expression edge pointer. */
-        if (expr && expr->record_idx != NOT_IN_RECORD && expr->operand.variadic.entity_alias) { // TODO what is actually necessary?
+        if (edge_idx != NOT_IN_RECORD) { // TODO referenced edges must be mapped prior to building AlgebraicExpression
             iexp->edge = e;
             iexp->relation_ids = _setup_traversed_relations(ast_rel);
-            if (expr->record_idx == NOT_IN_RECORD) {
-                expr->record_idx = AST_AddAnonymousRecordEntry((AST*)ast);
-            }
-            iexp->edge_idx = expr->record_idx;
+            iexp->edge_idx = edge_idx;
         } else {
             iexp->edge_idx = NOT_IN_RECORD;
         }

@@ -62,17 +62,17 @@ typedef OpResult (*fpReset)(struct OpBase*);
 typedef void (*fpFree)(struct OpBase*);
 
 struct OpBase {
-    OPType type;                // Type of operation
-    fpInit init;                // Called once before execution.
-    fpConsume consume;          // Produce next record.
-    fpReset reset;              // Reset operation state.
-    fpFree free;                // Free operation.
-    char *name;                 // Operation name.
-    uint *modifies;             // List of Record indices this op modifies.
-    struct OpBase **children;   // Child operations.
-    int childCount;             // Number of children.
-    uint record_len;            // Length of Record this op modifies.
-    struct OpBase *parent;      // Parent operations.
+    OPType type;                   // Type of operation
+    fpInit init;                   // Called once before execution.
+    fpConsume consume;             // Produce next record.
+    fpReset reset;                 // Reset operation state.
+    fpFree free;                   // Free operation.
+    char *name;                    // Operation name.
+    uint *modifies;                // List of Record indices this op modifies.
+    ExecutionPlanSegment *owner;   // Segment this operation belongs to.
+    struct OpBase **children;      // Child operations.
+    int childCount;                // Number of children.
+    struct OpBase *parent;         // Parent operations.
 };
 typedef struct OpBase OpBase;
 

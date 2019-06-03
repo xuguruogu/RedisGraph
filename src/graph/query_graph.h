@@ -42,5 +42,8 @@ void QueryGraph_ConnectNodes(QueryGraph *qg, Node *src, Node *dest, Edge *e, cha
 /* Retrieve a graph entity from an AST pointer */
 void* QueryGraph_GetEntityByASTRef(const QueryGraph *qg, const cypher_astnode_t *ref);
 
+/* Retrieve a graph entity from a Record ID. */
+void* QueryGraph_GetEntityByRecordID(const QueryGraph *qg, uint id);
+
 /* Frees entire graph */
 void QueryGraph_Free(QueryGraph* qg);

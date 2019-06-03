@@ -152,8 +152,6 @@ AR_ExpNode** _ReturnExpandAll(AST *ast) {
         AR_ExpNode *entity = ast->defined_entities[i];
         const char *alias = entity->operand.variadic.entity_alias;
         if (alias) {
-            entity->alias = alias;
-            entity->collapsed = true;
             return_expressions = array_append(return_expressions, entity);
         }
     }
@@ -174,51 +172,44 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_claus
 
         AR_ExpNode *exp = NULL;
         char *identifier = NULL;
+        uint id = NOT_IN_RECORD;
 
         if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
             // Retrieve "a" from "RETURN a" or "RETURN a AS e"
             identifier = (char*)cypher_ast_identifier_get_name(expr);
-            exp = AST_GetEntityFromAlias(ast, (char*)identifier);
+            id = AST_GetEntityFromAlias(ast, (char*)identifier);
         }
 
-        if (exp == NULL) {
+        if (id == NOT_IN_RECORD) {
             // Identifier did not appear in previous clauses.
             // It may be a constant or a function call (or other?)
             // Create a new entity to represent it.
             exp = AR_EXP_FromExpression(ast, expr);
 
-            if (exp->type == AR_EXP_OPERAND &&
-                    exp->operand.type == AR_EXP_VARIADIC &&
-                    exp->operand.variadic.entity_prop == NULL) {
-                exp->collapsed = true;
-            } else {
-                exp->collapsed = false;
-            }
             // Make space for entity in record
-            unsigned int id = AST_AddRecordEntry(ast);
+            unsigned int id = AST_MapEntity(ast, expr);
             AR_EXP_AssignRecordIndex(exp, id);
             // Add entity to the set of entities to be populated
             ast->defined_entities = array_append(ast->defined_entities, exp);
         }
 
         // If the projection is aliased, add the alias to mappings and Record
-        char *alias = NULL;
+        const char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
             // The projection either has an alias (AS) or is a function call.
-            alias = (char*)cypher_ast_identifier_get_name(alias_node);
-            // TODO can the alias have appeared in an earlier clause?
-            // (Yes.)
-            // Associate alias with the expression
-            AST_MapAlias(ast, alias, exp);
-            exp->alias = alias;
+            alias = cypher_ast_identifier_get_name(alias_node);
+            AST_MapAlias(ast, alias);
+            // exp->alias = alias;
+            exp->operand.variadic.entity_alias_idx = id;
         } else {
             const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
             if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
                 // Retrieve "a" from "RETURN a" or "RETURN a AS e"
                 identifier = (char*)cypher_ast_identifier_get_name(expr);
             }
-            exp->alias = identifier;
+            exp->operand.variadic.entity_alias = identifier;
+            exp->operand.variadic.entity_alias_idx = id;
         }
         return_expressions = array_append(return_expressions, exp);
     }
@@ -284,26 +275,24 @@ AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_cla
         const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
         const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
 
-        AR_ExpNode *exp = NULL;
-        char *identifier = NULL;
+        uint record_id = NOT_IN_RECORD;
+        const char *identifier = NULL;
 
         if (cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER) {
             // Retrieve "a" from "with a" or "with a AS e"
-            identifier = (char*)cypher_ast_identifier_get_name(expr);
-            exp = AST_GetEntityFromAlias(ast, (char*)identifier);
+            identifier = cypher_ast_identifier_get_name(expr);
+            record_id = AST_GetEntityFromAlias(ast, (char*)identifier);
         }
 
-        if (exp == NULL) {
+        AR_ExpNode *exp = NULL;
+        if (record_id == NOT_IN_RECORD) {
             // Identifier did not appear in previous clauses.
             // It may be a constant or a function call (or other?)
             // Create a new entity to represent it.
             exp = AR_EXP_FromExpression(ast, expr);
 
             // Make space for entity in record
-            unsigned int id = AST_AddRecordEntry(ast);
-            AR_EXP_AssignRecordIndex(exp, id);
-            // Add entity to the set of entities to be populated
-            ast->defined_entities = array_append(ast->defined_entities, exp);
+            record_id = AST_MapAlias(ast, identifier);
         }
 
         // If the projection is aliased, add the alias to mappings and Record
@@ -314,11 +303,11 @@ AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_cla
             alias = (char*)cypher_ast_identifier_get_name(alias_node);
 
             // Associate alias with the expression
-            AST_MapAlias(ast, alias, exp);
-            exp->alias = alias;
+            AST_AssociateAliasWithID(ast, alias, record_id);
+            // exp->alias = alias;
             with_expressions = array_append(with_expressions, exp);
         } else {
-            exp->alias = identifier;
+            // exp->alias = identifier;
             with_expressions = array_append(with_expressions, exp);
         }
     }

@@ -5,12 +5,16 @@
 */
 
 #include "query_graph.h"
-#include "../arithmetic/arithmetic_expression.h"
 #include "../util/arr.h"
 #include <assert.h>
 
 static void _QueryGraph_AddASTRef(QueryGraph *qg, const cypher_astnode_t *ast_entity, void *qg_entity) {
     int rc = TrieMap_Add(qg->ast_references, (char*)&ast_entity, sizeof(ast_entity), qg_entity, TrieMap_DONT_CARE_REPLACE);
+    assert(rc == 1);
+}
+
+static void _QueryGraph_AddID(QueryGraph *qg, uint id, void *qg_entity) {
+    int rc = TrieMap_Add(qg->ast_references, (char*)&id, sizeof(id), qg_entity, TrieMap_DONT_CARE_REPLACE);
     assert(rc == 1);
 }
 
@@ -21,18 +25,17 @@ static void _BuildQueryGraphAddNode(const GraphContext *gc,
 
     // TODO would it be better to build the QG map of hashes? More consistent with AST,
     // but requires accesses from elsewhere to hash first.
-    // AST_IDENTIFIER identifier = AST_EntityHash(ast_entity);
     Node *n = QueryGraph_GetEntityByASTRef(qg, ast_entity);
 
     // Node and AST entity already mapped, do nothing
     if (n) return;
 
     // Check if node has been mapped using a different AST entity
-    AR_ExpNode *exp = AST_GetEntity(ast, ast_entity);
+    uint id = AST_GetEntity(ast, ast_entity);
     const char *alias = NULL;
-    if (exp) {
-        n = QueryGraph_GetEntityByASTRef(qg, exp->operand.variadic.ast_ref);
-        alias = exp->operand.variadic.entity_alias;
+    if (id != NOT_IN_RECORD) {
+        n = QueryGraph_GetEntityByRecordID(qg, id);
+        if (n) alias = n->alias;
     }
 
     unsigned int nlabels = cypher_ast_node_pattern_nlabels(ast_entity);
@@ -46,6 +49,7 @@ static void _BuildQueryGraphAddNode(const GraphContext *gc,
         /* Create a new node, set its properties, and add it to the graph. */
         n = Node_New(label, alias);
         _QueryGraph_AddASTRef(qg, ast_entity, (void*)n);
+        // _QueryGraph_AddID(qg, id, (void*)n);
         qg->nodes = array_append(qg->nodes, n);
     }
 
@@ -75,10 +79,11 @@ static void _BuildQueryGraphAddEdge(const GraphContext *gc,
     /* Check for duplications. */
     if (e) return;
 
-    AR_ExpNode *exp = AST_GetEntity(ast, ast_entity);
+    uint id = AST_GetEntity(ast, ast_entity);
     const char *alias = NULL;
-    if (exp) {
-        alias = exp->operand.variadic.entity_alias;
+    if (id != NOT_IN_RECORD) {
+        e = QueryGraph_GetEntityByRecordID(qg, id);
+        if (e) alias = e->alias;
     }
 
     const cypher_astnode_t *src_node;
@@ -219,6 +224,12 @@ QueryGraph* BuildQueryGraph(const GraphContext *gc, const AST *ast) {
 
 void* QueryGraph_GetEntityByASTRef(const QueryGraph *qg, const cypher_astnode_t *ref) {
     void *ge = TrieMap_Find(qg->ast_references, (void*)&ref, sizeof(ref));
+    if (ge == TRIEMAP_NOTFOUND) return NULL;
+    return ge;
+}
+
+void* QueryGraph_GetEntityByRecordID(const QueryGraph *qg, uint id) {
+    void *ge = TrieMap_Find(qg->ast_references, (void*)&id, sizeof(id));
     if (ge == TRIEMAP_NOTFOUND) return NULL;
     return ge;
 }

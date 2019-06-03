@@ -121,17 +121,16 @@ AR_ExpNode* AR_EXP_NewVariableOperandNode(const cypher_astnode_t *entity, const 
     return node;
 }
 
-AR_ExpNode* AR_EXP_NewPropertyOperator(AR_ExpNode *alias_node, const char *prop) {
+AR_ExpNode* AR_EXP_NewPropertyOperator(uint entity_id, const char *prop, SchemaType t) {
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
     node->collapsed = false;
     node->record_idx = NOT_IN_RECORD;
     node->operand.type = AR_EXP_VARIADIC;
-    node->operand.variadic.entity_alias = alias_node->operand.variadic.entity_alias;
-    node->operand.variadic.entity_alias_idx = alias_node->operand.variadic.entity_alias_idx;
+    node->operand.variadic.entity_alias = NULL;
+    node->operand.variadic.entity_alias_idx = entity_id;
     node->operand.variadic.entity_prop = prop;
     node->operand.variadic.ast_ref = NULL;
-    SchemaType t = alias_node->operand.variadic.entity_type;
     node->operand.variadic.entity_type = t;
     node->operand.variadic.entity_prop_idx = ATTRIBUTE_NOTFOUND;
 
@@ -207,13 +206,14 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
         const cypher_astnode_t *prop_expr = cypher_ast_property_operator_get_expression(expr);
         assert(cypher_astnode_type(prop_expr) == CYPHER_AST_IDENTIFIER);
         const char *alias = cypher_ast_identifier_get_name(prop_expr);
-        AR_ExpNode *alias_node = AST_GetEntityFromAlias(ast, (char*)alias);
+        uint entity_id = AST_GetEntityFromAlias(ast, alias);
 
         // Extract the property name
         const cypher_astnode_t *prop_name_node = cypher_ast_property_operator_get_prop_name(expr);
         const char *prop_name = cypher_ast_prop_name_get_value(prop_name_node);
 
-        return AR_EXP_NewPropertyOperator(alias_node, prop_name);
+        // TODO get type
+        return AR_EXP_NewPropertyOperator(entity_id, prop_name, SCHEMA_UNKNOWN);
 
     /* SIValue constant types */
     } else if (type == CYPHER_AST_INTEGER) {

@@ -27,6 +27,7 @@ typedef struct {
     FT_FilterNode *filter_tree;      // FilterTree containing filters to be applied to this segment.
     AR_ExpNode **projections;        // Expressions to be constructed for a WITH or RETURN clause.
     AR_ExpNode **order_expressions;  // Expressions to be constructed for an ORDER clause.
+    TrieMap *record_map;
     uint record_len;                 // Length of Record being modified by this segment.
 } ExecutionPlanSegment;
 
