@@ -50,7 +50,7 @@ static void _yield(OpProcCall *op, SIValue *proc_output, Record r) {
     }
 }
 
-OpBase* NewProcCallOp(char *procedure, char **args, char **output, AST *ast) {
+OpBase* NewProcCallOp(const char *procedure, char **args, char **output, uint *modifies, AST *ast) {
     assert(procedure);
     OpProcCall *op = malloc(sizeof(OpProcCall));
     op->ast = ast;
@@ -71,10 +71,7 @@ OpBase* NewProcCallOp(char *procedure, char **args, char **output, AST *ast) {
     op->op.free = OpProcCallFree;
 
     int outputs_count = array_len(output);
-    if(outputs_count) {
-        op->op.modifies = NewVector(char*, outputs_count);
-        for(int i = 0; i < outputs_count; i++) Vector_Push(op->op.modifies, output[i]);
-    }
+    op->op.modifies = modifies;
 
     return (OpBase*)op;
 }

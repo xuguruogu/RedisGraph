@@ -164,12 +164,14 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
         RedisModule_ReplyWithArray(ctx, 2);
         ColumnTypeUser t;
         // First, emit the column type enum
-        // TODO fix logic for this
+        // TODO improve logic for this
         if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
             if (exp->operand.variadic.entity_type == SCHEMA_NODE) {
                 t = COLUMN_NODE;
-            } else {
+            } else if (exp->operand.variadic.entity_type == SCHEMA_EDGE) {
                 t = COLUMN_RELATION;
+            } else {
+                t = COLUMN_SCALAR;
             }
         } else {
             t = COLUMN_SCALAR;

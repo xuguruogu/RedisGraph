@@ -8,7 +8,7 @@ from .reversepattern import ReversePattern
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../../demo/imdb/')
 from base import FlowTestsBase
-import imdb_queries as queries
+import imdb_queries
 import imdb_utils
 
 queries = None

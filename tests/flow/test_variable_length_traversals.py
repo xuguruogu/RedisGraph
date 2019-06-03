@@ -69,40 +69,39 @@ class VariableLengthTraversalsFlowTest(FlowTestsBase):
 
     # Sanity check against single-hop traversal
     def test01_conditional_traverse(self):
-        query = """MATCH (a)-[e]->(b) RETURN a, e, b ORDER BY a.name, b.name"""
+        query = """MATCH (a)-[e]->(b) RETURN a.name, e.connects, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        expected_result = [['a.name', 'e.connects', 'b.name'],
-                           ['A', 'AB', 'B'],
+        expected_result = [['A', 'AB', 'B'],
                            ['B', 'BC', 'C'],
                            ['C', 'CD', 'D']]
         assert(actual_result.result_set == expected_result)
 
     # Traversal with no labels
     def test02_unlabeled_traverse(self):
-        query = """MATCH (a)-[*]->(b) RETURN a, b ORDER BY a.name, b.name"""
+        query = """MATCH (a)-[*]->(b) RETURN a.name, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)
 
         query = """MATCH (a)<-[*]-(b) RETURN a, b ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)
 
     # Traversal with labeled source
     def test03_source_labeled(self):
-        query = """MATCH (a:node)-[*]->(b) RETURN a, b ORDER BY a.name, b.name"""
+        query = """MATCH (a:node)-[*]->(b) RETURN a.name, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)
 
-        query = """MATCH (a:node)<-[*]-(b) RETURN a, b ORDER BY a.name, b.name"""
+        query = """MATCH (a:node)<-[*]-(b) RETURN a.name, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)
 
     # Traversal with labeled dest
     def test04_dest_labeled(self):
-        query = """MATCH (a)-[*]->(b:node) RETURN a, b ORDER BY a.name, b.name"""
+        query = """MATCH (a)-[*]->(b:node) RETURN a.name, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)
 
-        query = """MATCH (a)<-[*]-(b:node) RETURN a, b ORDER BY a.name, b.name"""
+        query = """MATCH (a)<-[*]-(b:node) RETURN a.name, b.name ORDER BY a.name, b.name"""
         actual_result = redis_graph.query(query)
-        assert(len(actual_result.result_set[1:]) == max_results)
+        assert(len(actual_result.result_set) == max_results)

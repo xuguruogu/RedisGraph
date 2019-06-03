@@ -127,9 +127,8 @@ class WithClauseTest(FlowTestsBase):
         query = """MATCH (a)-[]->(b) WHERE a.a_val > 0 AND b.b_val > 0 WITH a.a_val * 2 + b.b_val AS val ORDER BY val RETURN val"""
         actual_result = redis_graph.query(query)
 
-        expected = [['val'],
-                    [15],
-                    ['31.5']]
+        expected = [[15],
+                    [31.5]]
         assert actual_result.result_set == expected
 
     def test03_with_aggregate_op_read_queries(self):

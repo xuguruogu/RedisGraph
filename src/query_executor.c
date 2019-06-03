@@ -164,7 +164,7 @@ AR_ExpNode** _ReturnExpandAll(AST *ast) {
 AR_ExpNode** _BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_clause) {
     // Query is of type "RETURN *",
     // collect all defined identifiers and create return elements for them
-    if (cypher_ast_return_has_include_existing(ret_clause)) _ReturnExpandAll(ast);
+    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(ast);
 
     unsigned int count = cypher_ast_return_nprojections(ret_clause);
     AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);

@@ -213,10 +213,72 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     FT_FilterNode *filter_tree = AST_BuildFilterTree(ast);
     segment->filter_tree = filter_tree;
 
-    // if(ast->callNode) { // TODO
-        // OpBase *opProcCall = NewProcCallOp(ast->callNode->procedure, ast->callNode->arguments, ast->callNode->yield, ast);
-        // Vector_Push(ops, opProcCall);
-    // }
+
+    const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
+    if(call_clause) {
+        // A call clause has a procedure name, 0+ arguments (parenthesized expressions), and a projection if YIELD is included
+        const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
+        uint arg_count = cypher_ast_call_narguments(call_clause);
+        char **arguments = array_new(char*, arg_count);
+        for (uint i = 0; i < arg_count; i ++) {
+            const cypher_astnode_t *ast_arg = cypher_ast_call_get_argument(call_clause, i);
+            AR_ExpNode *arg = AR_EXP_FromExpression(ast, ast_arg);
+            char *arg_str;
+            // TODO tmp, leak
+            AR_EXP_ToString(arg, &arg_str);
+            AST_RecordAccommodateExpression(ast, arg);
+            AST_MapEntity(ast, ast_arg, arg);
+            AST_MapAlias(ast, arg_str, arg);
+            arguments = array_append(arguments, arg_str);
+        }
+
+        uint yield_count = cypher_ast_call_nprojections(call_clause);
+        char **yields = array_new(char*, yield_count);
+        uint *modified = array_new(char*, yield_count);
+        // if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
+        AR_ExpNode *yield;
+        char *yield_str;
+        for (uint i = 0; i < yield_count; i ++) {
+            // type == CYPHER_AST_PROJECTION
+            const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
+            const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
+
+            // TODO all tmp
+            if (yield_alias == NULL) {
+                const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
+                yield = AST_GetEntity(ast, ast_yield_exp);
+                // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
+                AR_EXP_ToString(yield, &yield_str);
+                // AST_RecordAccommodateExpression(ast, yield);
+                // AST_MapEntity(ast, ast_yield_exp, yield);
+                // AST_MapAlias(ast, yield_str, yield);
+                // yield->record_idx = AST_AddRecordEntry(ast);
+            } else {
+                yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
+                yield = AST_GetEntityFromAlias(ast, yield_str);
+                AST_RecordAccommodateExpression(ast, yield);
+            }
+            // segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
+            yields = array_append(yields, yield_str);
+            modified = array_append(modified, yield->record_idx);
+        }
+
+        /* Incase procedure call is missing its yield part
+         * include procedure outputs. */
+        if (yield_count == 0) {
+            ProcedureCtx *proc = Proc_Get(proc_name);
+            unsigned int output_count = array_len(proc->output);
+            for(int i = 0; i < output_count; i++) {
+                char *output_name = proc->output[i]->name;
+                yield = AST_GetEntityFromAlias(ast, output_name);
+                AR_EXP_ToString(yield, &yield_str);
+                yields = array_append(yields, yield_str);
+                modified = array_append(modified, yield->record_idx);
+            }
+        }
+        OpBase *opProcCall = NewProcCallOp(proc_name, arguments, yields, modified, ast);
+        Vector_Push(ops, opProcCall);
+    }
 
     const cypher_astnode_t **match_clauses = AST_CollectReferencesInRange(ast, CYPHER_AST_MATCH);
     uint match_count = array_len(match_clauses);
@@ -323,7 +385,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     // WITH/RETURN projections have already been constructed from the ATT
     AR_ExpNode **projections = segment->projections;
 
-    if (with_clause || ret_clause) {
+    if (with_clause || ret_clause || call_clause) {
         uint exp_count = array_len(projections);
         modifies = array_new(uint, exp_count);
         for (uint i = 0; i < exp_count; i ++) {
@@ -419,6 +481,9 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
             Vector_Push(ops, op_limit);
         }
 
+        op = NewResultsOp(result_set, qg);
+        Vector_Push(ops, op);
+    } else if (call_clause) {
         op = NewResultsOp(result_set, qg);
         Vector_Push(ops, op);
     }
@@ -521,6 +586,55 @@ ExecutionPlanSegment* _PrepareSegment(AST *ast, AR_ExpNode **projections) {
         const cypher_astnode_t *order_clause = cypher_ast_with_get_order_by(with_clause);
         if (order_clause) segment->order_expressions = AST_BuildOrderExpressions(ast, order_clause);
     }
+    // TODO tmp
+    const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
+    if(call_clause) {
+        uint yield_count = cypher_ast_call_nprojections(call_clause);
+        if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
+        for (uint i = 0; i < yield_count; i ++) {
+            // type == CYPHER_AST_PROJECTION
+            const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
+            const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
+
+            AR_ExpNode *yield;
+            char *yield_str;
+            // TODO all tmp
+            if (yield_alias == NULL) {
+                const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
+                yield = AR_EXP_FromExpression(ast, ast_yield_exp);
+                AR_EXP_ToString(yield, &yield_str);
+                AST_RecordAccommodateExpression(ast, yield);
+                AST_MapEntity(ast, ast_yield_exp, yield);
+                AST_MapAlias(ast, yield_str, yield);
+                yield->record_idx = AST_AddRecordEntry(ast);
+            } else {
+                yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
+                yield = AST_GetEntityFromAlias(ast, yield_str);
+                AST_RecordAccommodateExpression(ast, yield);
+            }
+            segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
+        }
+
+        /* Incase procedure call is missing its yield part
+         * include procedure outputs. */
+        if (yield_count == 0) {
+            const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
+            ProcedureCtx *proc = Proc_Get(proc_name);
+            assert(proc);
+
+            unsigned int output_count = array_len(proc->output);
+            for(int i = 0; i < output_count; i++) {
+                AR_ExpNode *exp = AR_EXP_NewAnonymousEntity(AST_AddRecordEntry(ast));
+                exp->operand.variadic.entity_alias = strdup(proc->output[i]->name);
+                exp->operand.variadic.entity_alias_idx = exp->record_idx;
+                AST_RecordAccommodateExpression(ast, exp);
+                // AST_MapEntity(ast, ast_yield_exp, yield);
+                AST_MapAlias(ast, proc->output[i]->name, exp);
+                // yield->record_idx = AST_AddRecordEntry(ast);
+                segment->projections = array_append(segment->projections, exp);
+            }
+        }
+    }
 
     return segment;
 }
@@ -588,10 +702,10 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
     segment = _PrepareSegment(ast_segment, input_projections);
     const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
     AR_ExpNode **return_columns = NULL;
-    if (ret_clause) {
+    if (segment->projections) {
         return_columns = segment->projections; // TODO kludge
     }
-    ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
+    if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
 
     plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
 

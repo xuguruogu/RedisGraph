@@ -29,9 +29,10 @@ typedef struct {
 } OpProcCall;
 
 OpBase* NewProcCallOp (
-    char *procedure,    // Procedure name.
+    const char *procedure,    // Procedure name.
     char **args,        // Arguments passed to procedure invocation.
     char **output,      // Procedure output.
+    uint *modifies,     // Record IDs of outputs
     AST *ast            // AST.
 );
 

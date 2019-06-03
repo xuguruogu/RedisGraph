@@ -83,7 +83,7 @@ class GraphMultiPatternQueryFlowTest(FlowTestsBase):
     def test03_create_fully_connected_graph(self):
         query = """MATCH(a:person), (b:person) WHERE a.name <> b.name CREATE (a)-[f:friend]->(b) RETURN count(f)"""
         actual_result = redis_graph.query(query)
-        friend_count = actual_result.result_set[1][0]
+        friend_count = actual_result.result_set[0][0]
         assert(friend_count == 42)
         assert (actual_result.relationships_created == 42)
     

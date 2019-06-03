@@ -1,16 +1,32 @@
 import os
 import sys
+import string
+import random
 import unittest
+import redis
 from redisgraph import Graph, Node, Edge
+from .base import FlowTestsBase
 
-# import redis
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from disposableredis import DisposableRedis
+def random_string(size=6, chars=string.ascii_letters):
+    return ''.join(random.choice(chars) for _ in range(size))
 
-from base import FlowTestsBase
+def get_redis():
+    global dis_redis
+    conn = redis.Redis()
+    try:
+        conn.ping()
+        # Assuming RedisGraph is loaded.
+    except redis.exceptions.ConnectionError:
+        # Bring up our own redis-server instance.
+        from .redis_base import DisposableRedis
+        dis_redis = DisposableRedis(loadmodule=os.path.dirname(os.path.abspath(__file__)) + '/../../src/redisgraph.so')
+        dis_redis.start()
+        conn = dis_redis.client()
+    return conn
 
-GRAPH_ID = "procedures"
+GRAPH_ID = None
 redis_graph = None
+dis_redis = None
 redis_con = None
 
 node1 = Node(label="fruit", properties={"name": "Orange1", "value": 1})
@@ -18,9 +34,6 @@ node2 = Node(label="fruit", properties={"name": "Orange2", "value": 2})
 node3 = Node(label="fruit", properties={"name": "Orange3", "value": 3})
 node4 = Node(label="fruit", properties={"name": "Orange4", "value": 4})
 node5 = Node(label="fruit", properties={"name": "Banana", "value": 5})
-
-def _redis():
-    return DisposableRedis(loadmodule=os.path.dirname(os.path.abspath(__file__)) + '/../../src/redisgraph.so')
 
 # Tests built in procedures,
 # e.g. db.idx.fulltext.queryNodes
@@ -31,21 +44,17 @@ class ProceduresTest(FlowTestsBase):
         print "ProceduresTest"
         global redis_graph
         global redis_con
-        cls.r = _redis()
-        cls.r.start()
-        redis_con = cls.r.client()
-        redis_graph = Graph(GRAPH_ID, redis_con)
+        redis_con = get_redis()
 
-        # cls.r = redis.Redis()
-        # redis_graph = Graph(GRAPH_ID, cls.r)
-        # redis_con = redis_graph.redis_con
+        GRAPH_ID = random_string()
+        redis_graph = Graph(GRAPH_ID, redis_con)
 
         cls.populate_graph()
 
     @classmethod
     def tearDownClass(cls):
-        cls.r.stop()
-        # pass
+        if dis_redis is not None:
+            dis_redis.stop()
 
     @classmethod
     def populate_graph(cls):
@@ -286,7 +295,7 @@ class ProceduresTest(FlowTestsBase):
     
     def test_procedure_propertyKeys(self):
         actual_resultset = redis_graph.call_procedure("db.propertyKeys").result_set
-        expected_results = [["value"], ["name"]]
+        expected_results = [["name"], ["value"]]
         assert(actual_resultset == expected_results)
 
 if __name__ == '__main__':
