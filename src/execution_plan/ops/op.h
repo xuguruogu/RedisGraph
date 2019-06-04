@@ -54,6 +54,7 @@ typedef enum {
     OP_ERR = 8,
 } OpResult;
 
+struct ExecutionPlanSegment;
 struct OpBase;
 
 typedef OpResult (*fpInit)(struct OpBase*);
@@ -69,7 +70,8 @@ struct OpBase {
     fpFree free;                   // Free operation.
     char *name;                    // Operation name.
     uint *modifies;                // List of Record indices this op modifies.
-    ExecutionPlanSegment *owner;   // Segment this operation belongs to.
+    uint record_len;           // TODO might be accessible from owner, figure out abstraction 
+    struct ExecutionPlanSegment *owner;   // Segment this operation belongs to.
     struct OpBase **children;      // Child operations.
     int childCount;                // Number of children.
     struct OpBase *parent;         // Parent operations.

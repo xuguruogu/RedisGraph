@@ -151,8 +151,6 @@ AR_ExpNode* AR_EXP_NewPropertyOperator(uint entity_id, const char *prop, SchemaT
 AR_ExpNode* AR_EXP_NewAnonymousEntity(uint id);
 AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant);
 
-void AR_EXP_AssignRecordIndex(AR_ExpNode *exp, unsigned int idx);
-
 /* Construct an arithmetic expression tree from a CYPHER_AST_EXPRESSION node. */
 AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr);
 

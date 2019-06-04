@@ -182,7 +182,7 @@ AlgebraicExpression **_AlgebraicExpression_Intermediate_Expressions(const AST *a
         e = QueryGraph_GetEntityByASTRef(q, ast_rel);
         transpose = (cypher_ast_rel_pattern_get_direction(ast_rel) == CYPHER_REL_INBOUND);
 
-        uint edge_idx = AST_GetEntity(ast, ast_rel);
+        uint edge_idx = AST_GetEntityIDFromReference(ast, ast_rel);
         /* If edge is referenced, set expression edge pointer. */
         if (edge_idx != NOT_IN_RECORD) { // TODO referenced edges must be mapped prior to building AlgebraicExpression
             iexp->edge = e;

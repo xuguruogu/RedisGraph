@@ -5,7 +5,6 @@
  */
 
 #include "resultset_formatters.h"
-#include "../parser/ast_common.h"
 #include "../util/arr.h"
 
 static inline PropertyTypeUser _mapValueType(const SIValue v) {
@@ -166,13 +165,13 @@ void ResultSet_ReplyWithCompactHeader(RedisModuleCtx *ctx, AR_ExpNode **exps) {
         // First, emit the column type enum
         // TODO improve logic for this
         if(exp->type == AR_EXP_OPERAND && exp->operand.type == AR_EXP_VARIADIC && exp->operand.variadic.entity_prop == NULL) {
-            if (exp->operand.variadic.entity_type == SCHEMA_NODE) {
-                t = COLUMN_NODE;
-            } else if (exp->operand.variadic.entity_type == SCHEMA_EDGE) {
-                t = COLUMN_RELATION;
-            } else {
-                t = COLUMN_SCALAR;
-            }
+            // if (exp->operand.variadic.entity_type == SCHEMA_NODE) {
+                // t = COLUMN_NODE;
+            // } else if (exp->operand.variadic.entity_type == SCHEMA_EDGE) {
+                // t = COLUMN_RELATION;
+            // } else {
+                // t = COLUMN_SCALAR;
+            // }
         } else {
             t = COLUMN_SCALAR;
         }

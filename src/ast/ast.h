@@ -16,7 +16,7 @@ typedef const cypher_astnode_t* AST_IDENTIFIER;
 
 #define NOT_IN_RECORD UINT_MAX
 
-// #define IDENTIFIER_NOT_FOUND UINT_MAX
+#define IDENTIFIER_NOT_FOUND UINT_MAX
 
 typedef enum {
     AST_VALID,
@@ -79,29 +79,15 @@ void AST_BuildAliasMap(AST *ast);
 
 // mapping functions
 
-uint AST_GetAliasID(const AST *ast, const char *alias);
+uint AST_GetEntityIDFromReference(const AST *ast, AST_IDENTIFIER entity);
 
-uint AST_GetEntity(const AST *ast, AST_IDENTIFIER entity);
+uint AST_GetEntityIDFromAlias(const AST *ast, const char *alias);
 
-uint AST_GetEntityFromAlias(const AST *ast, const char *alias);
-
-uint AST_GetEntityRecordIdx(const AST *ast, const cypher_astnode_t *entity);
-
-uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier);
-
+uint AST_MapEntity(const AST *ast, AST_IDENTIFIER identifier, uint id);
 
 uint AST_MapAlias(const AST *ast, const char *alias);
 
-void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
-
-// TODO find better place for record code
-uint AST_RecordLength(const AST *ast);
-
-uint AST_AddRecordEntry(AST *ast);
-
-void AST_RecordAccommodateExpression(AST *ast, AR_ExpNode *exp);
-
-uint AST_AddAnonymousRecordEntry(AST *ast);
+// void AST_AssociateAliasWithID(const AST *ast, const char *alias, uint id);
 
 AST* AST_GetFromTLS(void);
 

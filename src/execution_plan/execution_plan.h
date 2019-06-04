@@ -4,8 +4,7 @@
 * This file is available under the Redis Labs Source Available License Agreement
 */
 
-#ifndef __EXECUTION_PLAN_H__
-#define __EXECUTION_PLAN_H__
+#pragma once
 
 #include "./ops/op.h"
 #include "../graph/graph.h"
@@ -88,4 +87,10 @@ ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan);
 /* Free execution plan */
 void ExecutionPlan_Free(ExecutionPlan *plan);
 
-#endif
+// Mapping functions
+uint ExecutionPlanSegment_GetRecordIDFromReference(ExecutionPlanSegment *segment, AST_IDENTIFIER entity);
+uint ExecutionPlanSegment_ReferenceToRecordID(ExecutionPlanSegment *segment, AST_IDENTIFIER identifier);
+uint ExecutionPlanSegment_ExpressionToRecordID(ExecutionPlanSegment *segment, AR_ExpNode *exp);
+uint ExecutionPlanSegment_AliasToRecordID(ExecutionPlanSegment *segment, const char *alias, uint id);
+
+uint ExecutionPlanSegment_RecordLength(ExecutionPlanSegment *segment);

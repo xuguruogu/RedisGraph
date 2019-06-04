@@ -187,7 +187,7 @@ AR_ExpNode** _BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_claus
             exp = AR_EXP_FromExpression(ast, expr);
 
             // Make space for entity in record
-            unsigned int id = AST_MapEntity(ast, expr);
+            unsigned int id = AST_MapEntity(ast, expr, IDENTIFIER_NOT_FOUND);
             AR_EXP_AssignRecordIndex(exp, id);
             // Add entity to the set of entities to be populated
             ast->defined_entities = array_append(ast->defined_entities, exp);
@@ -233,12 +233,8 @@ AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_c
             // Reference to an alias in the query - associate with existing AR_ExpNode
             const char *alias = cypher_ast_identifier_get_name(cypher_exp);
             // Clone the expression so that we can free safely
-            exp = AR_EXP_Clone(AST_GetEntityFromAlias(ast, alias));
-            /* TODO There is a bit of oddness here, in that we should be able to create
-             * a reference node (as commented), but if the aliased entity is an aggregate,
-             * it will not register properly in op_aggregate's _classify_expressions */
-            // AR_ExpNode *referred_exp = AST_GetEntityFromAlias(ast, (char*)alias);
-            // exp = AR_EXP_NewReferenceNode((char*)alias, referred_exp->record_idx, false);
+            assert(false);
+            // exp = AR_EXP_Clone(AST_GetEntityFromAlias(ast, alias));
         } else {
             // Independent operator like:
             // ORDER BY COUNT(a)

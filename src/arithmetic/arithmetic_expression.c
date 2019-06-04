@@ -55,7 +55,6 @@ bool _AR_SetFunction(AR_ExpNode *exp, AST_Operator op) {
 static AR_ExpNode* _AR_EXP_NewOpNodeFromAST(AST_Operator op, int child_count) {
     AR_ExpNode *node = rm_calloc(1, sizeof(AR_ExpNode));
     node->type = AR_EXP_OP;
-    node->record_idx = NOT_IN_RECORD;
     node->op.func_name = NULL; // TODO needed?
     node->op.child_count = child_count;
     node->op.children = rm_malloc(child_count * sizeof(AR_ExpNode*));
@@ -73,8 +72,6 @@ static AR_ExpNode* _AR_EXP_NewOpNodeFromAST(AST_Operator op, int child_count) {
 static AR_ExpNode* _AR_EXP_NewOpNode(char *func_name, int child_count) {
     AR_ExpNode *node = rm_calloc(1, sizeof(AR_ExpNode));
     node->type = AR_EXP_OP;
-    node->collapsed = false;
-    node->record_idx = NOT_IN_RECORD;
     node->op.func_name = func_name;
     node->op.child_count = child_count;
     node->op.children = rm_malloc(child_count * sizeof(AR_ExpNode*));
@@ -102,21 +99,18 @@ static AR_ExpNode* _AR_EXP_NewOpNode(char *func_name, int child_count) {
 AR_ExpNode* AR_EXP_NewVariableOperandNode(const cypher_astnode_t *entity, const char *alias, uint id) {
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
-    node->collapsed = true;
-    node->record_idx = id;
     node->operand.type = AR_EXP_VARIADIC;
     node->operand.variadic.entity_alias = alias;
     node->operand.variadic.entity_alias_idx = id;
     node->operand.variadic.entity_prop = NULL;
-    node->operand.variadic.ast_ref = entity;
-    cypher_astnode_type_t ast_type = cypher_astnode_type(entity);
-    if (ast_type == CYPHER_AST_NODE_PATTERN) {
-        node->operand.variadic.entity_type = SCHEMA_NODE;
-    } else if (ast_type == CYPHER_AST_REL_PATTERN) {
-        node->operand.variadic.entity_type = SCHEMA_EDGE;
-    } else {
-        node->operand.variadic.entity_type = SCHEMA_UNKNOWN;
-    }
+    // cypher_astnode_type_t ast_type = cypher_astnode_type(entity);
+    // if (ast_type == CYPHER_AST_NODE_PATTERN) {
+        // node->operand.variadic.entity_type = SCHEMA_NODE;
+    // } else if (ast_type == CYPHER_AST_REL_PATTERN) {
+        // node->operand.variadic.entity_type = SCHEMA_EDGE;
+    // } else {
+        // node->operand.variadic.entity_type = SCHEMA_UNKNOWN;
+    // }
 
     return node;
 }
@@ -124,36 +118,11 @@ AR_ExpNode* AR_EXP_NewVariableOperandNode(const cypher_astnode_t *entity, const 
 AR_ExpNode* AR_EXP_NewPropertyOperator(uint entity_id, const char *prop, SchemaType t) {
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
-    node->collapsed = false;
-    node->record_idx = NOT_IN_RECORD;
     node->operand.type = AR_EXP_VARIADIC;
     node->operand.variadic.entity_alias = NULL;
     node->operand.variadic.entity_alias_idx = entity_id;
     node->operand.variadic.entity_prop = prop;
-    node->operand.variadic.ast_ref = NULL;
-    node->operand.variadic.entity_type = t;
     node->operand.variadic.entity_prop_idx = ATTRIBUTE_NOTFOUND;
-
-    return node;
-}
-
-AR_ExpNode* AR_EXP_NewReferenceNode(const char *alias, unsigned int record_idx, bool collapsed) {
-    AR_ExpNode *node = rm_calloc(1, sizeof(AR_ExpNode));
-    node->type = AR_EXP_REFERENCE;
-    node->alias = alias;
-    node->record_idx = record_idx;
-    node->collapsed = collapsed;
-
-    return node;
-}
-
-AR_ExpNode* AR_EXP_NewAnonymousEntity(uint id) {
-    AR_ExpNode *node = rm_calloc(1, sizeof(AR_ExpNode));
-    node->type = AR_EXP_OPERAND;
-    node->operand.type = AR_EXP_VARIADIC;
-
-    node->record_idx = id;
-    node->operand.variadic.entity_alias_idx = NOT_IN_RECORD;
 
     return node;
 }
@@ -161,14 +130,9 @@ AR_ExpNode* AR_EXP_NewAnonymousEntity(uint id) {
 AR_ExpNode* AR_EXP_NewConstOperandNode(SIValue constant) {
     AR_ExpNode *node = rm_malloc(sizeof(AR_ExpNode));
     node->type = AR_EXP_OPERAND;
-    node->record_idx = NOT_IN_RECORD;
     node->operand.type = AR_EXP_CONSTANT;
     node->operand.constant = constant;
     return node;
-}
-
-void AR_EXP_AssignRecordIndex(AR_ExpNode *exp, unsigned int idx) {
-    exp->record_idx = idx;
 }
 
 AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) {
@@ -195,7 +159,7 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
     } else if (type == CYPHER_AST_IDENTIFIER) {
         // Identifier referencing another AST entity
         const char *alias = cypher_ast_identifier_get_name(expr);
-        uint id = AST_GetAliasID(ast, (char*)alias);
+        uint id = AST_GetEntityIDFromAlias(ast, alias);
         return AR_EXP_NewVariableOperandNode(expr, alias, id);
 
     /* Entity-property pair */
@@ -206,7 +170,7 @@ AR_ExpNode* AR_EXP_FromExpression(const AST *ast, const cypher_astnode_t *expr) 
         const cypher_astnode_t *prop_expr = cypher_ast_property_operator_get_expression(expr);
         assert(cypher_astnode_type(prop_expr) == CYPHER_AST_IDENTIFIER);
         const char *alias = cypher_ast_identifier_get_name(prop_expr);
-        uint entity_id = AST_GetEntityFromAlias(ast, alias);
+        uint entity_id = AST_GetEntityIDFromAlias(ast, alias);
 
         // Extract the property name
         const cypher_astnode_t *prop_name_node = cypher_ast_property_operator_get_prop_name(expr);
@@ -339,25 +303,7 @@ void _AR_EXP_UpdatePropIdx(AR_ExpNode *root, const Record r) {
 
 SIValue AR_EXP_Evaluate(AR_ExpNode *root, const Record r) {
     SIValue result;
-    if (root->type == AR_EXP_REFERENCE) {
-    /* Deal with Operation node. */
-        uint idx = root->record_idx;
-        RecordEntryType t = Record_GetType(r, idx);
-        switch(t) {
-            case REC_TYPE_SCALAR:
-                result = Record_GetScalar(r, idx);
-                break;
-            case REC_TYPE_NODE:
-                result = SI_Node(Record_GetGraphEntity(r, idx));
-                break;
-            case REC_TYPE_EDGE:
-                result = SI_Edge(Record_GetGraphEntity(r, idx));
-                break;
-            default:
-                assert(false);
-        }
-        return result;
-    } else if(root->type == AR_EXP_OP) {
+    if(root->type == AR_EXP_OP) {
         /* Aggregation function should be reduced by now.
          * TODO: verify above statement. */
         if(root->op.type == AR_OP_AGGREGATE) {
@@ -549,7 +495,6 @@ void AR_EXP_ToString(const AR_ExpNode *root, char **str) {
 static AR_ExpNode* _AR_EXP_CloneOperand(AR_ExpNode* exp) {
     AR_ExpNode *clone = rm_calloc(1, sizeof(AR_ExpNode));
     clone->type = AR_EXP_OPERAND;
-    clone->record_idx = NOT_IN_RECORD;
     switch(exp->operand.type) {
         case AR_EXP_CONSTANT:
             clone->operand.type = AR_EXP_CONSTANT;
@@ -559,7 +504,6 @@ static AR_ExpNode* _AR_EXP_CloneOperand(AR_ExpNode* exp) {
             clone->operand.type = exp->operand.type;
             clone->operand.variadic.entity_alias = exp->operand.variadic.entity_alias;
             clone->operand.variadic.entity_alias_idx = exp->operand.variadic.entity_alias_idx;
-            clone->operand.variadic.entity_type = exp->operand.variadic.entity_type;
             if(exp->operand.variadic.entity_prop) {
                 clone->operand.variadic.entity_prop = exp->operand.variadic.entity_prop;
             }
@@ -581,10 +525,6 @@ static AR_ExpNode* _AR_EXP_CloneOp(AR_ExpNode* exp) {
     return clone;
 }
 
-static AR_ExpNode* _AR_EXP_CloneReference(AR_ExpNode* exp) {
-    return AR_EXP_NewReferenceNode(exp->alias, exp->record_idx, exp->collapsed);
-}
-
 AR_ExpNode* AR_EXP_Clone(AR_ExpNode* exp) {
     AR_ExpNode *clone;
     switch(exp->type) {
@@ -594,16 +534,10 @@ AR_ExpNode* AR_EXP_Clone(AR_ExpNode* exp) {
         case AR_EXP_OP:
             clone = _AR_EXP_CloneOp(exp);
             break;
-        case AR_EXP_REFERENCE:
-            clone = _AR_EXP_CloneReference(exp);
-            break;
         default:
             assert(false);
             break;
     }
-    clone->alias = exp->alias;
-    clone->record_idx = exp->record_idx;
-    clone->collapsed = exp->collapsed;
 
     return clone;
 }
