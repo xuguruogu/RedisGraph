@@ -350,7 +350,6 @@ AST* AST_Build(cypher_parse_result_t *parse_result) {
     ast->root = AST_GetBody(parse_result);
     assert(ast->root);
     ast->entity_map = NULL;
-    ast->defined_entities = NULL;
 
     return ast;
 }
@@ -372,8 +371,6 @@ AST* AST_NewSegment(AST *master_ast, uint start_offset, uint end_offset) {
 
     pthread_setspecific(_tlsASTKey, ast); // TODO I don't know if I like this
     _AST_BuildEntityMap(ast);
-
-    ast->defined_entities = array_new(AR_ExpNode*, 1);
 
     return ast;
 }
@@ -427,13 +424,6 @@ AST* AST_GetFromTLS(void) {
 }
 
 void AST_Free(AST *ast) {
-    if (ast->defined_entities) {
-        uint len = array_len(ast->defined_entities);
-        for (uint i = 0; i < len; i ++) {
-            AR_EXP_Free(ast->defined_entities[i]);
-        }
-        array_free(ast->defined_entities);
-    }
     if (ast->entity_map) TrieMap_Free(ast->entity_map, TrieMap_NOP_CB);
 
     rm_free(ast);

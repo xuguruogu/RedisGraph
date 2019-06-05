@@ -14,7 +14,7 @@
 
 typedef const cypher_astnode_t* AST_IDENTIFIER;
 
-#define NOT_IN_RECORD UINT_MAX
+#define NOT_IN_RECORD UINT_MAX // TODO delete
 
 #define IDENTIFIER_NOT_FOUND UINT_MAX
 
@@ -27,8 +27,6 @@ typedef struct AR_ExpNode AR_ExpNode;
 
 typedef struct {
     const cypher_astnode_t *root;     // Root element of libcypher-parser AST
-    // Extensible array of entities described in MATCH, MERGE, and CREATE clausesp
-    AR_ExpNode **defined_entities;    // TODO delete if possible
     TrieMap *entity_map;              // Mapping of aliases and AST node pointers to AR_ExpNodes (TODO replace with record IDs)
 } AST;
 
@@ -75,7 +73,10 @@ bool AST_ClauseContainsAggregation(const cypher_astnode_t *clause);
 
 AR_ExpNode** AST_GetOrderExpressions(const cypher_astnode_t *order_clause);
 
-void AST_BuildAliasMap(AST *ast);
+
+AR_ExpNode** AST_BuildReturnExpressions(AST *ast, const cypher_astnode_t *ret_clause);
+AR_ExpNode** AST_BuildWithExpressions(AST *ast, const cypher_astnode_t *with_clause);
+AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_clause);
 
 // mapping functions
 

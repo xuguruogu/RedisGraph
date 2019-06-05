@@ -174,9 +174,8 @@ QueryGraph* BuildQueryGraph(const GraphContext *gc, const AST *ast) {
     // If so, re-introduce similar logic.
     size_t node_count;
     size_t edge_count;
-    // Estimating number of nodes and edges required to accommodate QueryGraph;
-    // will be extended as necessary
-    node_count = edge_count = AST_RecordLength(ast);
+    // The initial node and edge arrays will be large enough to accommodate all AST entities
+    node_count = edge_count = ast->entity_map->cardinality;
     // _Determine_Graph_Size(old_ast, &node_count, &edge_count);
     QueryGraph *qg = QueryGraph_New(node_count, edge_count);
 

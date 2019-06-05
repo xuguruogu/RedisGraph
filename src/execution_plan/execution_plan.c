@@ -29,6 +29,109 @@ static ResultSet* _prepare_resultset(RedisModuleCtx *ctx, AST *ast, bool compact
     return set;
 }
 
+AR_ExpNode** _ReturnExpandAll(AST *ast) {
+    uint identifier_count = array_len(ast->defined_entities);
+    AR_ExpNode **return_expressions = array_new(AR_ExpNode*, identifier_count);
+
+    for (uint i = 0; i < identifier_count; i ++) {
+        AR_ExpNode *entity = ast->defined_entities[i];
+        const char *alias = entity->operand.variadic.entity_alias;
+        if (alias) {
+            return_expressions = array_append(return_expressions, entity);
+        }
+    }
+    return return_expressions;
+}
+
+AR_ExpNode** AST_BuildOrderExpressions(AST *ast, const cypher_astnode_t *order_clause) {
+    // Handle ORDER entities
+    assert(order_clause);
+
+    bool ascending = true;
+    uint nitems = cypher_ast_order_by_nitems(order_clause);
+    AR_ExpNode **order_exps = array_new(AR_ExpNode*, nitems);
+
+    for (uint i = 0; i < nitems; i ++) {
+        const cypher_astnode_t *item = cypher_ast_order_by_get_item(order_clause, i);
+        const cypher_astnode_t *cypher_exp = cypher_ast_sort_item_get_expression(item);
+        AR_ExpNode *exp;
+        if (cypher_astnode_type(cypher_exp) == CYPHER_AST_IDENTIFIER) {
+            // Reference to an alias in the query - associate with existing AR_ExpNode
+            const char *alias = cypher_ast_identifier_get_name(cypher_exp);
+            // Clone the expression so that we can free safely
+            assert(false);
+            // exp = AR_EXP_Clone(AST_GetEntityFromAlias(ast, alias));
+        } else {
+            // Independent operator like:
+            // ORDER BY COUNT(a)
+            exp = AR_EXP_FromExpression(ast, cypher_exp);
+        }
+
+        order_exps = array_append(order_exps, exp);
+        // TODO direction should be specifiable per order entity
+        ascending = cypher_ast_sort_item_is_ascending(item);
+    }
+
+    // *direction = ascending ? DIR_ASC : DIR_DESC;
+
+    return order_exps;
+}
+// Handle RETURN entities
+AR_ExpNode** _BuildReturnExpressions(AST *ast, ExecutionPlanSegment *segment, const cypher_astnode_t *ret_clause) {
+    // Query is of type "RETURN *",
+    // collect all defined identifiers and create return elements for them
+    if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(ast);
+
+    uint count = cypher_ast_return_nprojections(ret_clause);
+    AR_ExpNode **return_expressions = array_new(AR_ExpNode*, count);
+    for (uint i = 0; i < count; i++) {
+        const cypher_astnode_t *projection = cypher_ast_return_get_projection(ret_clause, i);
+        // The AST expression can be an identifier, function call, or constant
+        const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+
+        // Retrieve the AST ID of the return entity
+        uint ast_id = AST_GetEntityIDFromReference(ast, ast_exp);
+        assert(ast_id != IDENTIFIER_NOT_FOUND);
+
+        // uint record_id = ExecutionPlanSegment_GetRecordIDFromReference(segment, ast_exp);
+        // if (record_id != IDENTIFIER_NOT_FOUND) {
+            // This projection has already been mapped.
+        // }
+        /* Possible mappings:
+         * - AST pointer(s)
+         * - AST ID
+         * - AR_ExpNode
+         * - Alias
+         */
+        uint record_id = ExecutionPlanSegment_ReferenceToRecordID(segment, ast_exp);
+
+        // Construction an AR_ExpNode to represent this return entity.
+        AR_ExpNode *exp = AR_EXP_FromExpression(ast, ast_exp);
+        // Add it to the segment's projections.
+        segment->projections = array_append(segment->projections, exp);
+
+        // If the projection is aliased, add the alias to mappings and Record
+        const char *alias = NULL;
+        const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
+        if (alias_node) {
+            // The projection either has an alias (AS) or is a function call.
+            alias = cypher_ast_identifier_get_name(alias_node);
+            ExecutionPlanSegment_AliasToRecordID(segment, alias, record_id);
+        } else {
+            const cypher_astnode_t *ast_exp = cypher_ast_projection_get_expression(projection);
+            if (cypher_astnode_type(ast_exp) == CYPHER_AST_IDENTIFIER) {
+                // Retrieve "a" from "RETURN a" or "RETURN a AS e"
+                identifier = cypher_ast_identifier_get_name(ast_exp);
+            }
+            exp->operand.variadic.entity_alias = identifier;
+            exp->operand.variadic.entity_alias_idx = record_id;
+        }
+        return_expressions = array_append(return_expressions, exp);
+    }
+
+    return return_expressions;
+}
+
 /* Given an AST path, construct a series of scans and traversals to model it. */
 void _ExecutionPlanSegment_BuildTraversalOps(ExecutionPlanSegment *segment, QueryGraph *qg, FT_FilterNode *ft, const cypher_astnode_t *path, Vector *traversals) {
     GraphContext *gc = GraphContext_GetFromTLS();
@@ -202,12 +305,104 @@ void _ExecutionPlanSegment_AddTraversalOps(Vector *ops, OpBase *cartesian_root, 
     }
 }
 
-ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, ExecutionPlanSegment *segment, OpBase *prev_op) {
-    Vector *ops = NewVector(OpBase*, 1);
+// Map the required AST entities and build expressions to match
+// the AST slice's WITH, RETURN, and ORDER clauses
+void _ExecutionPlanSegment_BuildProjections(ExecutionPlanSegment *segment, AST *ast) {
+    // Retrieve a RETURN clause if one is specified in this AST's range
+    const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
+    // Retrieve a WITH clause if one is specified in this AST's range
+    const cypher_astnode_t *with_clause = AST_GetClause(ast, CYPHER_AST_WITH);
+    // We cannot have both a RETURN and WITH clause
+    assert(!(ret_clause && with_clause));
+    segment->projections = NULL;
+    segment->order_expressions = NULL;
+
+    const cypher_astnode_t *order_clause = NULL;
+    if (ret_clause) {
+        segment->projections = AST_BuildReturnExpressions(ast, ret_clause);
+        order_clause = cypher_ast_return_get_order_by(ret_clause);
+    } else if (with_clause) {
+        segment->projections = AST_BuildWithExpressions(ast, with_clause);
+        order_clause = cypher_ast_with_get_order_by(with_clause);
+    }
+
+    if (order_clause) segment->order_expressions = AST_BuildOrderExpressions(ast, order_clause);
+
+    // TODO tmp
+    const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
+    // if(call_clause) {
+        // uint yield_count = cypher_ast_call_nprojections(call_clause);
+        // if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
+        // for (uint i = 0; i < yield_count; i ++) {
+            // // type == CYPHER_AST_PROJECTION
+            // const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
+            // const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
+
+            // AR_ExpNode *yield;
+            // char *yield_str;
+            // // TODO all tmp
+            // if (yield_alias == NULL) {
+                // const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
+                // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
+                // AR_EXP_ToString(yield, &yield_str);
+                // AST_RecordAccommodateExpression(ast, yield);
+                // AST_MapEntity(ast, ast_yield_exp, yield);
+                // AST_MapAlias(ast, yield_str, yield);
+                // yield->record_idx = AST_AddRecordEntry(ast);
+            // } else {
+                // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
+                // yield = AST_GetEntityFromAlias(ast, yield_str);
+                // AST_RecordAccommodateExpression(ast, yield);
+            // }
+            // segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
+        // }
+
+        /* Incase procedure call is missing its yield part
+         * include procedure outputs. */
+        // if (yield_count == 0) {
+            // const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
+            // ProcedureCtx *proc = Proc_Get(proc_name);
+            // assert(proc);
+
+            // unsigned int output_count = array_len(proc->output);
+            // for(int i = 0; i < output_count; i++) {
+                // AR_ExpNode *exp = AR_EXP_NewAnonymousEntity(AST_AddRecordEntry(ast));
+                // exp->operand.variadic.entity_alias = strdup(proc->output[i]->name);
+                // exp->operand.variadic.entity_alias_idx = exp->record_idx;
+                // AST_RecordAccommodateExpression(ast, exp);
+                // // AST_MapEntity(ast, ast_yield_exp, yield);
+                // AST_MapAlias(ast, proc->output[i]->name, exp);
+                // // yield->record_idx = AST_AddRecordEntry(ast);
+                // segment->projections = array_append(segment->projections, exp);
+            // }
+        // }
+    // }
+
+}
+
+ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, AR_ExpNode **prev_projections, OpBase *prev_op) {
+
+    // Allocate a new segment
+    ExecutionPlanSegment *segment = rm_malloc(sizeof(ExecutionPlanSegment));
 
     // Initialize map of Record IDs
     TrieMap *record_map = NewTrieMap();
     segment->record_map = record_map;
+
+    if (prev_projections) {
+        // We have an array of identifiers provided by a prior WITH clause -
+        // these will correspond to our first Record entities
+        uint projection_count = array_len(prev_projections);
+        for (uint i = 0; i < projection_count; i++) {
+            AR_ExpNode *projection = prev_projections[i];
+            ExecutionPlanSegment_ExpressionToRecordID(segment, projection);
+        }
+    }
+
+    // Build projections from this AST's WITH, RETURN, ORDER, and CALL clauses
+    _ExecutionPlanSegment_BuildProjections(segment, ast);
+
+    Vector *ops = NewVector(OpBase*, 1);
 
     // Build query graph
     QueryGraph *qg = BuildQueryGraph(gc, ast);
@@ -550,117 +745,6 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     return segment;
 }
 
-// Map the required AST entities and build expressions to match
-// the AST slice's WITH, RETURN, and ORDER clauses
-ExecutionPlanSegment* _PrepareSegment(AST *ast, AR_ExpNode **projections) {
-    // Allocate a new segment
-    ExecutionPlanSegment *segment = rm_malloc(sizeof(ExecutionPlanSegment));
-
-    if (projections) {
-        // We have an array of identifiers provided by a prior WITH clause -
-        // these will correspond to our first Record entities
-        uint projection_count = array_len(projections);
-        for (uint i = 0; i < projection_count; i++) {
-            // TODO add interface
-            AR_ExpNode *projection = projections[i];
-            uint record_idx = ExecutionPlanSegment_ExpressionToRecordID(segment, projection);
-            ExecutionPlanSegment_AliasToRecordID(segment, projection->operand.variadic.entity_alias, record_idx);
-        }
-    }
-
-    AST_BuildAliasMap(ast);
-
-    // Retrieve a RETURN clause if one is specified in this AST's range
-    const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
-    // Retrieve a WITH clause if one is specified in this AST's range
-    const cypher_astnode_t *with_clause = AST_GetClause(ast, CYPHER_AST_WITH);
-
-    // We cannot have both a RETURN and WITH clause
-    assert(!(ret_clause && with_clause));
-    segment->projections = NULL;
-    segment->order_expressions = NULL;
-
-    if (ret_clause) {
-        segment->projections = AST_BuildReturnExpressions(ast, ret_clause);
-        const cypher_astnode_t *order_clause = cypher_ast_return_get_order_by(ret_clause);
-        if (order_clause) segment->order_expressions = AST_BuildOrderExpressions(ast, order_clause);
-    } else if (with_clause) {
-        segment->projections = AST_BuildWithExpressions(ast, with_clause);
-        const cypher_astnode_t *order_clause = cypher_ast_with_get_order_by(with_clause);
-        if (order_clause) segment->order_expressions = AST_BuildOrderExpressions(ast, order_clause);
-    }
-    // TODO tmp
-    const cypher_astnode_t *call_clause = AST_GetClause(ast, CYPHER_AST_CALL);
-    // if(call_clause) {
-        // uint yield_count = cypher_ast_call_nprojections(call_clause);
-        // if (segment->projections == NULL) segment->projections = array_new(AR_ExpNode*, yield_count);
-        // for (uint i = 0; i < yield_count; i ++) {
-            // // type == CYPHER_AST_PROJECTION
-            // const cypher_astnode_t *ast_yield = cypher_ast_call_get_projection(call_clause, i);
-            // const cypher_astnode_t *yield_alias = cypher_ast_projection_get_alias(ast_yield);
-
-            // AR_ExpNode *yield;
-            // char *yield_str;
-            // // TODO all tmp
-            // if (yield_alias == NULL) {
-                // const cypher_astnode_t *ast_yield_exp = cypher_ast_projection_get_expression(ast_yield);
-                // yield = AR_EXP_FromExpression(ast, ast_yield_exp);
-                // AR_EXP_ToString(yield, &yield_str);
-                // AST_RecordAccommodateExpression(ast, yield);
-                // AST_MapEntity(ast, ast_yield_exp, yield);
-                // AST_MapAlias(ast, yield_str, yield);
-                // yield->record_idx = AST_AddRecordEntry(ast);
-            // } else {
-                // yield_str = rm_strdup(cypher_ast_identifier_get_name(yield_alias));
-                // yield = AST_GetEntityFromAlias(ast, yield_str);
-                // AST_RecordAccommodateExpression(ast, yield);
-            // }
-            // segment->projections = array_append(segment->projections, yield); // TODO tmp, adds yield to return exps
-        // }
-
-        /* Incase procedure call is missing its yield part
-         * include procedure outputs. */
-        // if (yield_count == 0) {
-            // const char *proc_name = cypher_ast_proc_name_get_value(cypher_ast_call_get_proc_name(call_clause));
-            // ProcedureCtx *proc = Proc_Get(proc_name);
-            // assert(proc);
-
-            // unsigned int output_count = array_len(proc->output);
-            // for(int i = 0; i < output_count; i++) {
-                // AR_ExpNode *exp = AR_EXP_NewAnonymousEntity(AST_AddRecordEntry(ast));
-                // exp->operand.variadic.entity_alias = strdup(proc->output[i]->name);
-                // exp->operand.variadic.entity_alias_idx = exp->record_idx;
-                // AST_RecordAccommodateExpression(ast, exp);
-                // // AST_MapEntity(ast, ast_yield_exp, yield);
-                // AST_MapAlias(ast, proc->output[i]->name, exp);
-                // // yield->record_idx = AST_AddRecordEntry(ast);
-                // segment->projections = array_append(segment->projections, exp);
-            // }
-        // }
-    // }
-
-    return segment;
-}
-
-// TODO same as AST_Free, but doesn't free defined entities
-void _AST_Free(AST *ast) {
-    if (ast->defined_entities) {
-        uint len = array_len(ast->defined_entities);
-        for (uint i = 0; i < len; i ++) {
-            // TODO leaks on entities that are not handed off
-            // AR_EXP_Free(ast->defined_entities[i]);
-        }
-        array_free(ast->defined_entities);
-    } else {
-        ast->defined_entities = array_new(AR_ExpNode*, 1);
-    }
-
-    if (ast->entity_map) TrieMap_Free(ast->entity_map, TrieMap_NOP_CB);
-    // TODO probably a memory leak on ast->root
-    rm_free(ast);
-}
-
-
 ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool compact, bool explain) {
     AST *ast = AST_GetFromTLS();
 
@@ -689,12 +773,13 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
         for (i = 0; i < with_clause_count; i++) {
             end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
             ast_segment = AST_NewSegment(ast, start_offset, end_offset);
-            segment = _PrepareSegment(ast_segment, input_projections);
-            plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
-            _AST_Free(ast_segment); // Free all AST constructions scoped to this segment
+            segment =_NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, input_projections, prev_op);
+            plan->segments[i] = segment;
+            // TODO probably a memory leak on ast->root
+            AST_Free(ast_segment); // Free all AST constructions scoped to this segment
             // Store the expressions constructed by this segment's WITH projection to pass into the *next* segment
             prev_op = segment->root;
-            input_projections = plan->segments[i]->projections;
+            input_projections = segment->projections;
             start_offset = end_offset;
         }
         // Prepare the last AST segment
@@ -702,7 +787,6 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
         ast_segment = AST_NewSegment(ast, start_offset, end_offset);
     }
 
-    segment = _PrepareSegment(ast_segment, input_projections);
     const cypher_astnode_t *ret_clause = AST_GetClause(ast, CYPHER_AST_RETURN);
     AR_ExpNode **return_columns = NULL;
     if (segment->projections) {
@@ -710,14 +794,15 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool comp
     }
     if (explain == false) ResultSet_ReplyWithPreamble(plan->result_set, return_columns);
 
-    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, segment, prev_op);
+    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast_segment, plan->result_set, input_projections, prev_op);
 
-    plan->root = segment->root;
+    plan->root = plan->segments[i]->root;
 
     optimizePlan(gc, plan);
 
+    // Free current AST segment if it has been constructed here.
     if (ast_segment != ast) {
-        _AST_Free(ast_segment);
+        AST_Free(ast_segment);
     }
     // _AST_Free(ast);
 
