@@ -12,6 +12,7 @@
 #include "GB_select.h"
 #include "GB_ek_slice.h"
 #include "GB_sel__include.h"
+#include "GB_unused.h"
 
 // The selection is defined by the following types and operators:
 

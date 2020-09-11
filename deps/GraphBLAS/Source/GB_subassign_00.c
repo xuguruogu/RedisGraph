@@ -17,6 +17,7 @@
 // S:           constructed
 
 #include "GB_subassign_methods.h"
+#include "GB_unused.h"
 
 GrB_Info GB_subassign_00
 (

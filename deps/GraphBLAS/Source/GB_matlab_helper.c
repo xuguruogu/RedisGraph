@@ -11,6 +11,7 @@
 // SuiteSparse:GraphBLAS.
 
 #include "GB_matlab_helper.h"
+#include "GB_unused.h"
 
 //------------------------------------------------------------------------------
 // GB_NTHREADS: determine the number of threads to use

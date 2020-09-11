@@ -14,6 +14,7 @@
 #include "GB_control.h"
 #include "GB_iterator.h"
 #include "GB_unaryop__include.h"
+#include "GB_unused.h"
 
 // C=unop(A) is defined by the following types and operators:
 

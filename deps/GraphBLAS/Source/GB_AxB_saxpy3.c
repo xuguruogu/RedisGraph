@@ -88,6 +88,7 @@
 #ifndef GBCOMPACT
 #include "GB_AxB__include.h"
 #endif
+#include "GB_unused.h"
 
 //------------------------------------------------------------------------------
 // control parameters for generating parallel tasks

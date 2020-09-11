@@ -38,6 +38,7 @@
 // FUTURE:: exploit A==M, B==M, and A==B aliases
 
 #include "GB_emult.h"
+#include "GB_unused.h"
 
 GrB_Info GB_emult_phase0        // find vectors in C for C=A.*B or C<M>=A.*B
 (

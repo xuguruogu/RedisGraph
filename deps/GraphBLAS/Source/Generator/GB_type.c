@@ -14,6 +14,7 @@
 #include "GB_control.h"
 #include "GB_ek_slice.h"
 #include "GB_type__include.h"
+#include "GB_unused.h"
 
 // The operation is defined by the following types and operators:
 

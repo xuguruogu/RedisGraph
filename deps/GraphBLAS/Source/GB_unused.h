@@ -18,8 +18,15 @@
 #pragma warning (disable: 177 593)
 #elif defined ( __GNUC__ )
 // disable gcc -Wall -Wextra -Wpedantic warnings
+
+#if !defined(__has_warning) || __has_warning("-Wunused-but-set-variable")
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+
+#if !defined(__has_warning) || __has_warning("-Wunused-variable")
 #pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
 #endif
 
 #endif

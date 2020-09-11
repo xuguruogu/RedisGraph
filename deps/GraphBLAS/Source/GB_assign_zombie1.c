@@ -11,6 +11,7 @@
 // complemented mask requires all entries in the C(:,j) vector to be deleted.
 
 #include "GB_assign.h"
+#include "GB_unused.h"
 
 void GB_assign_zombie1
 (

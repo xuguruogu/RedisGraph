@@ -15,6 +15,7 @@
 #include "GB_ek_slice.h"
 #include "GB_dense.h"
 #include "GB_binop__include.h"
+#include "GB_unused.h"
 
 // C=binop(A,B) is defined by the following types and operators:
 

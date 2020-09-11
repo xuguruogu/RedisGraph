@@ -11,6 +11,7 @@
 // counted as non-empty.
 
 #include "GB.h"
+#include "GB_unused.h"
 
 int64_t GB_nvec_nonempty        // return # of non-empty vectors
 (

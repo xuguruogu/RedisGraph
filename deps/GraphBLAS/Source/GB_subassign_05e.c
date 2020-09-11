@@ -19,6 +19,7 @@
 // S:           none
 
 #include "GB_subassign_methods.h"
+#include "GB_unused.h"
 
 #undef  GB_FREE_ALL
 #define GB_FREE_ALL

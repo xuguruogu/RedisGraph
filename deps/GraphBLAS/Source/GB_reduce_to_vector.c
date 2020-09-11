@@ -19,6 +19,7 @@
 #ifndef GBCOMPACT
 #include "GB_red__include.h"
 #endif
+#include "GB_unused.h"
 
 #define GB_FREE_WORK                                                        \
 {                                                                           \

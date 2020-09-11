@@ -103,13 +103,22 @@
 
 // disable warnings for gcc 8.2:
 // #pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#if !defined(__has_warning) || __has_warning("-Wint-in-bool-context")
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#endif
+
+#if !defined(__has_warning) || __has_warning("-Wformat-truncation=")
 #pragma GCC diagnostic ignored "-Wformat-truncation="
+#endif
 
 // disable warnings from -Wall -Wextra -Wpendantic
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wsign-compare"
+
+#if !defined(__has_warning) || __has_warning("-Wmaybe-uninitialized")
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
 
 // See GB_unused.h, where these two pragmas are used:
@@ -123,7 +132,11 @@
 // #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
 
 // enable these warnings as errors
+
+#if !defined(__has_warning) || __has_warning("-Wmisleading-indentation")
 #pragma GCC diagnostic error "-Wmisleading-indentation"
+#endif
+
 #pragma GCC diagnostic error "-Wswitch-default"
 #pragma GCC diagnostic error "-Wmissing-prototypes"
 

@@ -25,6 +25,7 @@
 #ifndef GBCOMPACT
 #include "GB_binop__include.h"
 #endif
+#include "GB_unused.h"
 
 GrB_Info GB_emult_phase2                // C=A.*B or C<M>=A.*B
 (

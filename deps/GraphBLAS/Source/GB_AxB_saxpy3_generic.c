@@ -17,6 +17,7 @@
 #include "GB_bracket.h"
 #include "GB_sort.h"
 #include "GB_atomics.h"
+#include "GB_unused.h"
 
 GrB_Info GB_AxB_saxpy3_generic
 (

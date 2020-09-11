@@ -23,7 +23,9 @@
 #pragma GCC diagnostic ignored "-Wformat-truncation="
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-result"
+#if defined __GNU__
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wsign-compare"
 #pragma GCC diagnostic ignored "-Wtype-limits"
